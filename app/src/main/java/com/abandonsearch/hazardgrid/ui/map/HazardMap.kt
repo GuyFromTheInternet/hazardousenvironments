@@ -32,6 +32,7 @@ import world.mappable.mapkit.map.MapObject
 import world.mappable.mapkit.map.MapObjectTapListener
 import world.mappable.mapkit.map.PlacemarkMapObject
 import world.mappable.mapkit.mapview.MapView
+import com.yandex.runtime.image.ImageProvider
 
 @Composable
 fun HazardMap(
@@ -47,7 +48,7 @@ fun HazardMap(
         MapView(context).apply {
             map.move(
                 CameraPosition(Point(DEFAULT_LAT, DEFAULT_LON), DEFAULT_ZOOM, 0f, 0f),
-                Animation(Animation.Type.SMOOTH, 0),
+                Animation(Animation.Type.SMOOTH, 0f),
                 null
             )
         }
@@ -124,7 +125,7 @@ fun HazardMap(
             )
             val activePlace = uiState.activePlace
             if (activePlace?.lat != null && activePlace.lon != null) {
-                val point = Point(activePlace.lat, active-place.lon)
+                val point = Point(activePlace.lat, activePlace.lon)
                 val screenPoint = view.mapWindow.worldToScreen(point)
                 if (screenPoint != null) {
                     onActiveMarkerPosition(Offset(screenPoint.x, screenPoint.y))
@@ -272,4 +273,4 @@ private const val DEFAULT_LAT = 55.7558
 private const val DEFAULT_LON = 37.6173
 private const val DEFAULT_ZOOM = 10.0f
 private const val FOCUS_ZOOM = 15.0f
-private const val ANIMATION_DURATION = 800L
+private const val ANIMATION_DURATION = 800f

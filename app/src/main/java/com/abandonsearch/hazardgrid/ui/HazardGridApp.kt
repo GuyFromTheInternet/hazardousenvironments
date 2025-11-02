@@ -56,12 +56,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -71,6 +71,7 @@ import com.abandonsearch.hazardgrid.ui.components.ErrorOverlay
 import com.abandonsearch.hazardgrid.ui.components.FilterPanel
 import com.abandonsearch.hazardgrid.ui.components.LoadingOverlay
 import com.abandonsearch.hazardgrid.ui.components.PlaceDetailCard
+import com.abandonsearch.hazardgrid.ui.components.WebView
 import com.abandonsearch.hazardgrid.ui.map.HazardMap
 import com.abandonsearch.hazardgrid.ui.map.rememberLocationHeadingState
 import com.abandonsearch.hazardgrid.ui.state.HazardUiState
@@ -112,6 +113,19 @@ fun HazardGridApp() {
         }
     }
 
+    if (uiState.webViewUrl != null) {
+        Dialog(onDismissRequest = { viewModel.closeWebView() }) {
+            Surface(shape = RoundedCornerShape(16.dp)) {
+                Column {
+                    WebView(url = uiState.webViewUrl!!)
+                    TextButton(onClick = { viewModel.closeWebView() }) {
+                        Text("Close")
+                    }
+                }
+            }
+        }
+    }
+
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
         sheetPeekHeight = sheetPeekHeight,
@@ -125,7 +139,8 @@ fun HazardGridApp() {
             if (uiState.activePlace != null) {
                 PlaceDetailCard(
                     place = uiState.activePlace!!,
-                    onClose = { viewModel.setActivePlace(null, centerOnMap = false) }
+                    onClose = { viewModel.setActivePlace(null, centerOnMap = false) },
+                    onOpenIntel = { viewModel.openWebView(it) }
                 )
             } else {
                 HazardPeninsulaSheet(
