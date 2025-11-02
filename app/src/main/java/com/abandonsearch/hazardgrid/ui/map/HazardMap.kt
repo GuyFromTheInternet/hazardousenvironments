@@ -1,8 +1,8 @@
 package com.abandonsearch.hazardgrid.ui.map
 
+import android.content.Context
 import android.os.Handler
 import android.os.Looper
-import android.graphics.Point
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -10,7 +10,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.core.view.doOnDetach
 import com.abandonsearch.hazardgrid.data.Place
 import com.abandonsearch.hazardgrid.domain.GeoBounds
 import com.abandonsearch.hazardgrid.domain.GeoPoint
@@ -19,15 +18,20 @@ import com.abandonsearch.hazardgrid.ui.HazardGridViewModel
 import com.abandonsearch.hazardgrid.ui.state.HazardUiState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
-import java.util.LinkedHashMap
-import org.osmdroid.events.MapListener
-import org.osmdroid.events.ScrollEvent
-import org.osmdroid.events.ZoomEvent
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.GeoPoint as OsmGeoPoint
-import org.osmdroid.views.CustomZoomButtonsController
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
+import world.mappable.mapkit.Animation
+import world.mappable.mapkit.geometry.Point
+import world.mappable.mapkit.map.CameraListener
+import world.mappable.mapkit.map.CameraPosition
+import world.mappable.mapkit.map.CameraUpdateReason
+import world.mappable.mapkit.map.Cluster
+import world.mappable.mapkit.map.ClusterListener
+import world.mappable.mapkit.map.ClusterTapListener
+import world.mappable.mapkit.map.ClusterizedPlacemarkCollection
+import world.mappable.mapkit.map.IconStyle
+import world.mappable.mapkit.map.MapObject
+import world.mappable.mapkit.map.MapObjectTapListener
+import world.mappable.mapkit.map.PlacemarkMapObject
+import world.mappable.mapkit.mapview.MapView
 
 @Composable
 fun HazardMap(
@@ -41,26 +45,24 @@ fun HazardMap(
     val context = LocalContext.current
     val mapView = remember(context) {
         MapView(context).apply {
-            setTileSource(TileSourceFactory.MAPNIK)
-            setMultiTouchControls(true)
-            isTilesScaledToDpi = true
-            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
-            controller.setZoom(DEFAULT_ZOOM)
-            controller.setCenter(OsmGeoPoint(DEFAULT_LAT, DEFAULT_LON))
-            minZoomLevel = 4.0
-            maxZoomLevel = 19.0
+            map.move(
+                CameraPosition(Point(DEFAULT_LAT, DEFAULT_LON), DEFAULT_ZOOM, 0f, 0f),
+                Animation(Animation.Type.SMOOTH, 0),
+                null
+            )
         }
     }
-    val markerController = remember { MarkerController(context) }
+    val markerController = remember { MarkerController(context, onMarkerSelected) }
     val viewportWatcher = remember { ViewportWatcher(onViewportChanged) }
 
     DisposableEffect(mapView) {
-        mapView.onResume()
+        mapView.onStart()
         viewportWatcher.attach(mapView)
+        markerController.attach(mapView)
         onDispose {
+            markerController.detach(mapView)
             viewportWatcher.detach(mapView)
-            mapView.onPause()
-            mapView.onDetach()
+            mapView.onStop()
         }
     }
 
@@ -71,27 +73,41 @@ fun HazardMap(
                     val lat = command.place.lat
                     val lon = command.place.lon
                     if (lat != null && lon != null) {
-                        val geoPoint = OsmGeoPoint(lat, lon)
-                        mapView.controller.animateTo(geoPoint, FOCUS_ZOOM, ANIMATION_DURATION)
+                        val point = Point(lat, lon)
+                        mapView.map.move(
+                            CameraPosition(point, FOCUS_ZOOM, 0f, 0f),
+                            Animation(Animation.Type.SMOOTH, ANIMATION_DURATION),
+                            null
+                        )
                         markerController.pulseActiveMarker(command.place.id)
                     }
                 }
                 is HazardGridViewModel.MapCommand.FocusOnLocation -> {
                     val location = command.location
-                    val geoPoint = OsmGeoPoint(location.latitude, location.longitude)
+                    val point = Point(location.latitude, location.longitude)
+                    val zoom = command.zoom?.toFloat() ?: mapView.map.cameraPosition.zoom
+                    val cameraPosition = CameraPosition(point, zoom, mapView.map.cameraPosition.azimuth, mapView.map.cameraPosition.tilt)
                     if (command.animate) {
-                        val zoom = command.zoom ?: mapView.zoomLevelDouble
-                        mapView.controller.animateTo(geoPoint, zoom, ANIMATION_DURATION)
+                        mapView.map.move(
+                            cameraPosition,
+                            Animation(Animation.Type.SMOOTH, ANIMATION_DURATION),
+                            null
+                        )
                     } else {
-                        command.zoom?.let { mapView.controller.setZoom(it) }
-                        mapView.controller.setCenter(geoPoint)
+                        mapView.map.move(cameraPosition)
                     }
                 }
                 is HazardGridViewModel.MapCommand.SetOrientation -> {
-                    mapView.mapOrientation = normalizeBearing(command.bearing)
+                    val current = mapView.map.cameraPosition
+                    mapView.map.move(
+                        CameraPosition(current.target, current.zoom, command.bearing, current.tilt)
+                    )
                 }
                 HazardGridViewModel.MapCommand.ResetOrientation -> {
-                    mapView.mapOrientation = 0f
+                    val current = mapView.map.cameraPosition
+                    mapView.map.move(
+                        CameraPosition(current.target, current.zoom, 0f, current.tilt)
+                    )
                 }
             }
         }
@@ -103,19 +119,15 @@ fun HazardMap(
         update = { view ->
             viewportWatcher.attach(view)
             markerController.updateMarkers(
-                mapView = view,
                 places = uiState.visibleMarkers,
                 activeId = uiState.activePlaceId,
-                onMarkerSelected = onMarkerSelected
             )
             val activePlace = uiState.activePlace
             if (activePlace?.lat != null && activePlace.lon != null) {
-                val projection = view.projection
-                if (projection != null) {
-                    val geoPoint = OsmGeoPoint(activePlace.lat, activePlace.lon)
-                    val screenPoint = Point()
-                    projection.toPixels(geoPoint, screenPoint)
-                    onActiveMarkerPosition(Offset(screenPoint.x.toFloat(), screenPoint.y.toFloat()))
+                val point = Point(activePlace.lat, active-place.lon)
+                val screenPoint = view.mapWindow.worldToScreen(point)
+                if (screenPoint != null) {
+                    onActiveMarkerPosition(Offset(screenPoint.x, screenPoint.y))
                 } else {
                     onActiveMarkerPosition(null)
                 }
@@ -127,64 +139,74 @@ fun HazardMap(
 }
 
 private class MarkerController(
-    context: android.content.Context,
-) {
-    private val markers = LinkedHashMap<Int, Marker>()
+    context: Context,
+    private val onMarkerSelected: (Place) -> Unit,
+) : ClusterListener, ClusterTapListener, MapObjectTapListener {
     private val markerFactory = HazardMarkerFactory(context)
+    private var collection: ClusterizedPlacemarkCollection? = null
+    private val placesById = mutableMapOf<Int, Place>()
+
+    fun attach(mapView: MapView) {
+        val mapObjects = mapView.map.mapObjects
+        collection = mapObjects.addClusterizedPlacemarkCollection(this)
+    }
+
+    fun detach(mapView: MapView) {
+        collection?.let {
+            mapView.map.mapObjects.remove(it)
+        }
+        collection = null
+    }
 
     fun updateMarkers(
-        mapView: MapView,
         places: List<Place>,
         activeId: Int?,
-        onMarkerSelected: (Place) -> Unit,
     ) {
-        val desiredIds = places.map { it.id }.toMutableSet()
-        if (activeId != null) {
-            desiredIds += activeId
-        }
-        val iterator = markers.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (entry.key !in desiredIds) {
-                mapView.overlays.remove(entry.value)
-                iterator.remove()
+        val coll = collection ?: return
+        placesById.clear()
+        places.forEach { placesById[it.id] = it }
+
+        val points = places.mapNotNull { place ->
+            place.lat?.let { lat ->
+                place.lon?.let { lon ->
+                    Point(lat, lon)
+                }
             }
         }
-        for (place in places) {
-            val marker = markers[place.id] ?: createMarker(mapView, place).also {
-                markers[place.id] = it
-                mapView.overlays.add(it)
-            }
-            if (place.lat != null && place.lon != null) {
-                marker.position = OsmGeoPoint(place.lat, place.lon)
-            }
-            marker.icon = markerFactory.getDrawable(place.id == activeId)
-            marker.setOnMarkerClickListener { _, _ ->
-                onMarkerSelected(place)
-                true
-            }
-            marker.infoWindow = null
+        coll.clear()
+        val placemarks = coll.addPlacemarks(points, markerFactory.getDrawable(false), IconStyle())
+        for ((i, placemark) in placemarks.withIndex()) {
+            placemark.userData = places[i].id
+            placemark.addTapListener(this)
         }
-        markers[activeId]?.icon = markerFactory.getDrawable(true)
-        mapView.invalidate()
+        coll.clusterPlacemarks(60.0, 15)
     }
 
     fun pulseActiveMarker(activeId: Int?) {
         // Intentionally left for future pulse animation hook
     }
 
-    private fun createMarker(mapView: MapView, place: Place): Marker = Marker(mapView).apply {
-        setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-        infoWindow = null
-        if (place.lat != null && place.lon != null) {
-            position = OsmGeoPoint(place.lat, place.lon)
-        }
+    override fun onClusterAdded(cluster: Cluster) {
+        cluster.appearance.setIcon(markerFactory.getClusterDrawable(cluster.size))
+        cluster.addClusterTapListener(this)
+    }
+
+    override fun onClusterTap(cluster: Cluster): Boolean {
+        // TODO: Implement cluster tap logic (e.g., zoom in)
+        return true
+    }
+
+    override fun onMapObjectTap(mapObject: MapObject, point: Point): Boolean {
+        val placeId = mapObject.userData as? Int ?: return false
+        val place = placesById[placeId] ?: return false
+        onMarkerSelected(place)
+        return true
     }
 }
 
 private class ViewportWatcher(
     private val onViewportChanged: (MapViewport) -> Unit,
-) : MapListener {
+) : CameraListener {
     private val handler = Handler(Looper.getMainLooper())
     private val notifyRunnable = Runnable { dispatchViewport() }
     private var mapView: MapView? = null
@@ -196,27 +218,25 @@ private class ViewportWatcher(
         }
         detach(this.mapView)
         this.mapView = mapView
-        mapView.addMapListener(this)
-        mapView.doOnDetach { detach(it as MapView) }
+        mapView.map.addCameraListener(this)
         scheduleDispatch()
     }
 
     fun detach(mapView: MapView?) {
-        mapView?.removeMapListener(this)
+        mapView?.map?.removeCameraListener(this)
         handler.removeCallbacks(notifyRunnable)
         if (this.mapView === mapView) {
             this.mapView = null
         }
     }
 
-    override fun onScroll(event: ScrollEvent?): Boolean {
+    override fun onCameraPositionChanged(
+        p0: world.mappable.mapkit.map.Map,
+        p1: CameraPosition,
+        p2: CameraUpdateReason,
+        p3: Boolean
+    ) {
         scheduleDispatch()
-        return false
-    }
-
-    override fun onZoom(event: ZoomEvent?): Boolean {
-        scheduleDispatch()
-        return false
     }
 
     private fun scheduleDispatch() {
@@ -235,28 +255,21 @@ private class ViewportWatcher(
 }
 
 private fun MapView.toViewport(): MapViewport {
-    val centerPoint = mapCenter as? OsmGeoPoint ?: OsmGeoPoint(DEFAULT_LAT, DEFAULT_LON)
-    val bounding = boundingBox
+    val visibleRegion = map.visibleRegion
     val bounds = GeoBounds(
-        north = bounding.latNorth,
-        south = bounding.latSouth,
-        east = bounding.lonEast,
-        west = bounding.lonWest,
+        north = visibleRegion.topLeft.latitude,
+        south = visibleRegion.bottomRight.latitude,
+        east = visibleRegion.bottomRight.longitude,
+        west = visibleRegion.topLeft.longitude,
     )
     return MapViewport(
-        center = GeoPoint(centerPoint.latitude, centerPoint.longitude),
+        center = GeoPoint(map.cameraPosition.target.latitude, map.cameraPosition.target.longitude),
         bounds = bounds,
     )
 }
 
 private const val DEFAULT_LAT = 55.7558
 private const val DEFAULT_LON = 37.6173
-private const val DEFAULT_ZOOM = 10.0
-private const val FOCUS_ZOOM = 15.0
+private const val DEFAULT_ZOOM = 10.0f
+private const val FOCUS_ZOOM = 15.0f
 private const val ANIMATION_DURATION = 800L
-
-private fun normalizeBearing(bearing: Float): Float {
-    var value = bearing % 360f
-    if (value < 0f) value += 360f
-    return value
-}

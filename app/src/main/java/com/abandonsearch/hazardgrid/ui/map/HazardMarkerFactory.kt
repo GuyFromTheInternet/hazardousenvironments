@@ -17,10 +17,19 @@ class HazardMarkerFactory(private val context: Context) {
 
     fun getDrawable(isActive: Boolean): Drawable = if (isActive) activeDrawable else defaultDrawable
 
+    fun getClusterDrawable(clusterSize: Int): Drawable {
+        val bitmap = Bitmap.createBitmap(markerSize, markerSize, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        val drawable = HazardMarkerDrawable(isCluster = true, clusterSize = clusterSize)
+        drawable.setBounds(0, 0, markerSize, markerSize)
+        drawable.draw(canvas)
+        return BitmapDrawable(context.resources, bitmap)
+    }
+
     private fun createDrawable(isActive: Boolean): Drawable {
         val bitmap = Bitmap.createBitmap(markerSize, markerSize, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val drawable = HazardMarkerDrawable(isActive)
+        val drawable = HazardMarkerDrawable(isActive = isActive)
         drawable.setBounds(0, 0, markerSize, markerSize)
         drawable.draw(canvas)
         return BitmapDrawable(context.resources, bitmap)

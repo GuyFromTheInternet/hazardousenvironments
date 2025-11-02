@@ -9,17 +9,19 @@ import android.graphics.drawable.Drawable
 import kotlin.math.min
 
 class HazardMarkerDrawable(
-    private val isActive: Boolean,
+    private val isActive: Boolean = false,
+    private val isCluster: Boolean = false,
+    private val clusterSize: Int = 0
 ) : Drawable() {
 
     private val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = if (isActive) ACTIVE_HALO else INACTIVE_HALO
+        color = if (isActive || isCluster) ACTIVE_HALO else INACTIVE_HALO
     }
 
     private val corePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
-        color = if (isActive) ACTIVE_CORE else INACTIVE_CORE
+        color = if (isActive || isCluster) ACTIVE_CORE else INACTIVE_CORE
     }
 
     private val bladePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -47,6 +49,11 @@ class HazardMarkerDrawable(
         color = Color.BLACK
     }
 
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.BLACK
+        textAlign = Paint.Align.CENTER
+    }
+
     private val scratch = Path()
 
     override fun draw(canvas: Canvas) {
@@ -63,34 +70,40 @@ class HazardMarkerDrawable(
         val coreRadius = radius * 0.78f
         canvas.drawCircle(cx, cy, coreRadius, corePaint)
 
-        outerStrokePaint.strokeWidth = radius * 0.08f
-        canvas.drawCircle(cx, cy, coreRadius - outerStrokePaint.strokeWidth * 0.5f, outerStrokePaint)
+        if (isCluster) {
+            textPaint.textSize = size * 0.4f
+            val textY = cy - (textPaint.descent() + textPaint.ascent()) / 2
+            canvas.drawText(clusterSize.toString(), cx, textY, textPaint)
+        } else {
+            outerStrokePaint.strokeWidth = radius * 0.08f
+            canvas.drawCircle(cx, cy, coreRadius - outerStrokePaint.strokeWidth * 0.5f, outerStrokePaint)
 
-        canvas.save()
-        canvas.translate(cx, cy)
-        val outerRadius = coreRadius * 0.92f
-        val innerRadius = coreRadius * 0.45f
-        val outerRect = android.graphics.RectF(-outerRadius, -outerRadius, outerRadius, outerRadius)
-        val innerRect = android.graphics.RectF(-innerRadius, -innerRadius, innerRadius, innerRadius)
-        val startAngles = floatArrayOf(-90f, 30f, 150f)
-        val sweep = 60f
-        startAngles.forEach { start ->
-            scratch.reset()
-            scratch.arcTo(outerRect, start, sweep, false)
-            scratch.arcTo(innerRect, start + sweep, -sweep, false)
-            scratch.close()
-            canvas.drawPath(scratch, bladePaint)
+            canvas.save()
+            canvas.translate(cx, cy)
+            val outerRadius = coreRadius * 0.92f
+            val innerRadius = coreRadius * 0.45f
+            val outerRect = android.graphics.RectF(-outerRadius, -outerRadius, outerRadius, outerRadius)
+            val innerRect = android.graphics.RectF(-innerRadius, -innerRadius, innerRadius, innerRadius)
+            val startAngles = floatArrayOf(-90f, 30f, 150f)
+            val sweep = 60f
+            startAngles.forEach { start ->
+                scratch.reset()
+                scratch.arcTo(outerRect, start, sweep, false)
+                scratch.arcTo(innerRect, start + sweep, -sweep, false)
+                scratch.close()
+                canvas.drawPath(scratch, bladePaint)
+            }
+
+            canvas.restore()
+
+            val centerRadius = innerRadius * 0.62f
+            canvas.drawCircle(cx, cy, centerRadius, centerFillPaint)
+
+            centerStrokePaint.strokeWidth = radius * 0.08f
+            canvas.drawCircle(cx, cy, innerRadius * 0.92f, centerStrokePaint)
+
+            canvas.drawCircle(cx, cy, innerRadius * 0.42f, hubPaint)
         }
-
-        canvas.restore()
-
-        val centerRadius = innerRadius * 0.62f
-        canvas.drawCircle(cx, cy, centerRadius, centerFillPaint)
-
-        centerStrokePaint.strokeWidth = radius * 0.08f
-        canvas.drawCircle(cx, cy, innerRadius * 0.92f, centerStrokePaint)
-
-        canvas.drawCircle(cx, cy, innerRadius * 0.42f, hubPaint)
     }
 
     override fun setAlpha(alpha: Int) {
@@ -101,6 +114,7 @@ class HazardMarkerDrawable(
         outerStrokePaint.alpha = alpha
         centerStrokePaint.alpha = alpha
         centerFillPaint.alpha = alpha
+        textPaint.alpha = alpha
     }
 
     override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
@@ -111,6 +125,7 @@ class HazardMarkerDrawable(
         outerStrokePaint.colorFilter = colorFilter
         centerStrokePaint.colorFilter = colorFilter
         centerFillPaint.colorFilter = colorFilter
+        textPaint.colorFilter = colorFilter
     }
 
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
