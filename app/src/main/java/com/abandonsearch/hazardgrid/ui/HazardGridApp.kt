@@ -126,7 +126,7 @@ fun HazardGridApp() {
         sheetPeekHeight = sheetPeekHeight,
         sheetShape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
         sheetDragHandle = { HazardSheetHandle() },
-        sheetContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.97f),
+        sheetContainerColor = MaterialTheme.colorScheme.surfaceVariant,
         sheetContentColor = MaterialTheme.colorScheme.onSurface,
         sheetTonalElevation = 14.dp,
         sheetShadowElevation = 32.dp,
@@ -423,7 +423,7 @@ private fun HazardSheetHeader(
     ) {
         Surface(
             shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+            color = MaterialTheme.colorScheme.surfaceVariant,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 0.dp
         ) {
@@ -488,7 +488,7 @@ private fun HazardSheetHandle() {
                 .width(72.dp)
                 .height(8.dp)
                 .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.75f))
+                .background(MaterialTheme.colorScheme.primary)
         )
     }
 }
@@ -506,11 +506,6 @@ private fun LocationOrientationButton(
         LocationMode.Centered -> Icons.Rounded.GpsFixed
         LocationMode.Oriented -> Icons.Rounded.Navigation
     }
-    val backgroundAlpha = when (mode) {
-        LocationMode.Idle -> 0.85f
-        LocationMode.Centered -> 0.9f
-        LocationMode.Oriented -> 0.95f
-    }
     val contentDescription = when {
         !hasLocationPermission -> "Enable location access"
         mode == LocationMode.Idle -> "Center map on my position"
@@ -523,7 +518,7 @@ private fun LocationOrientationButton(
     Surface(
         modifier = modifier.size(52.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = backgroundAlpha),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         shadowElevation = 12.dp,
         tonalElevation = 0.dp,
         onClick = onClick
@@ -557,14 +552,14 @@ private fun HazardPulseIndicator() {
         modifier = Modifier
             .size(28.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.35f)),
+            .background(MaterialTheme.colorScheme.primary),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
                 .size(14.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha))
+                .background(MaterialTheme.colorScheme.primary)
         )
     }
 }

@@ -2,14 +2,14 @@ package com.abandonsearch.hazardgrid.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val Primary = Color(0xFFC2D9FF)
-val OnPrimary = Color(0xFF003063)
-val PrimaryContainer = Color(0xFF004789)
-val OnPrimaryContainer = Color(0xFFDCE2F3)
-val Secondary = Color(0xFFBDC7DC)
-val OnSecondary = Color(0xFF243141)
-val SecondaryContainer = Color(0xFF3B4858)
-val OnSecondaryContainer = Color(0xFFDAE2F9)
+val Primary = Color(0xFFFFEB3B)
+val OnPrimary = Color(0xFF000000)
+val PrimaryContainer = Color(0xFFFFC107)
+val OnPrimaryContainer = Color(0xFF000000)
+val Secondary = Color(0xFF2196F3)
+val OnSecondary = Color(0xFFFFFFFF)
+val SecondaryContainer = Color(0xFF0D47A1)
+val OnSecondaryContainer = Color(0xFFFFFFFF)
 val Tertiary = Color(0xFFDDB0F4)
 val OnTertiary = Color(0xFF3F2150)
 val TertiaryContainer = Color(0xFF573868)

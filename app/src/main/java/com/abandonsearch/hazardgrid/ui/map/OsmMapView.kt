@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import org.osmdroid.views.MapView
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 
 @Composable
 fun OsmMapView(
@@ -14,6 +15,7 @@ fun OsmMapView(
         modifier = modifier,
         factory = { context ->
             MapView(context).apply {
+                setTileSource(TileSourceFactory.MAPNIK)
                 onMapView(this)
             }
         }

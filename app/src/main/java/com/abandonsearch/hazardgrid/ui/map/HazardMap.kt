@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.collectLatest
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.BoundingBox
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.FolderOverlay
@@ -83,9 +84,12 @@ fun HazardMap(
     OsmMapView(
         modifier = modifier,
         onMapView = {
+            it.setTileSource(TileSourceFactory.MAPNIK)
             it.setMultiTouchControls(true)
             it.controller.setZoom(DEFAULT_ZOOM)
             it.controller.setCenter(org.osmdroid.util.GeoPoint(DEFAULT_LAT, DEFAULT_LON))
+            markerController.attach(it)
+            viewportWatcher.attach(it)
         }
     )
 
@@ -112,14 +116,15 @@ fun HazardMap(
 
 private class MarkerController(
     private val context: Context,
-    private val mapView: MapView,
+    private var mapView: MapView,
     private val onMarkerSelected: (Place) -> Unit,
 ) {
     private val markerFactory = HazardMarkerFactory(context)
     private val markerOverlay = FolderOverlay()
     private val placesById = mutableMapOf<Int, Place>()
 
-    init {
+    fun attach(mapView: MapView) {
+        this.mapView = mapView
         mapView.overlays.add(markerOverlay)
     }
 
@@ -154,13 +159,14 @@ private class MarkerController(
 }
 
 private class ViewportWatcher(
-    private val mapView: MapView,
+    private var mapView: MapView,
     private val onViewportChanged: (MapViewport) -> Unit,
 ) : MapListener {
     private val handler = Handler(Looper.getMainLooper())
     private val notifyRunnable = Runnable { dispatchViewport() }
 
-    fun attach() {
+    fun attach(mapView: MapView) {
+        this.mapView = mapView
         mapView.addMapListener(this)
         scheduleDispatch()
     }

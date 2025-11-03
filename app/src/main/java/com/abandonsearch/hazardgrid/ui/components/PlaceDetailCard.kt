@@ -46,7 +46,7 @@ fun PlaceDetailCard(
     val context = LocalContext.current
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.96f),
+        color = MaterialTheme.colorScheme.surfaceVariant,
         tonalElevation = 12.dp,
         shadowElevation = 18.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
