@@ -80,7 +80,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    implementation("com.yandex.android:maps.mobile:4.5.1-lite")
+    implementation("org.osmdroid:osmdroid-android:6.1.20")
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     testImplementation("junit:junit:4.13.2")

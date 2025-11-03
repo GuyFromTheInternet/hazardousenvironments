@@ -135,7 +135,8 @@ fun HazardGridApp() {
                 PlaceDetailCard(
                     place = uiState.activePlace!!,
                     onClose = { viewModel.setActivePlace(null, centerOnMap = false) },
-                    onOpenIntel = { viewModel.openWebView(it) }
+                    onOpenIntel = { viewModel.openWebView(it) },
+                    onSearch = viewModel::updateQuery
                 )
             } else {
                 HazardPeninsulaSheet(
@@ -290,8 +291,8 @@ fun HazardGridApp() {
 
             LocationOrientationButton(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 24.dp, end = 16.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 24.dp, end = 16.dp),
                 mode = locationMode,
                 hasLocationPermission = hasLocationPermission,
                 isLocationAvailable = locationHeadingState.location != null,
