@@ -37,7 +37,6 @@ import com.abandonsearch.hazardgrid.ui.theme.AccentPrimary
 import com.abandonsearch.hazardgrid.ui.theme.AccentStrong
 import com.abandonsearch.hazardgrid.ui.theme.NightOverlay
 import com.abandonsearch.hazardgrid.ui.theme.SurfaceBorder
-import com.abandonsearch.hazardgrid.ui.theme.TextMuted
 import com.abandonsearch.hazardgrid.ui.theme.TextSecondary
 
 @Composable

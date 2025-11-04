@@ -137,9 +137,11 @@ private class MarkerController(
         activeId: Int?,
         onMarkerSelected: (Place) -> Unit,
     ) {
-        val existingPlaceIds = markers.keys.toMutableSet()
+        clusterer.items.clear()
+        markers.clear()
+
         for (place in places) {
-            val marker = markers[place.id] ?: createMarker(mapView, place).also {
+            val marker = createMarker(mapView, place).also {
                 markers[place.id] = it
                 clusterer.add(it)
             }
@@ -152,13 +154,6 @@ private class MarkerController(
                 true
             }
             marker.infoWindow = null
-            existingPlaceIds.remove(place.id)
-        }
-
-        for (placeId in existingPlaceIds) {
-            markers.remove(placeId)?.let {
-                clusterer.remove(it)
-            }
         }
 
         markers[activeId]?.icon = markerFactory.getDrawable(true)
