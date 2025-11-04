@@ -49,8 +49,6 @@ fun HazardMap(
             setMapOrientation(0f, true)
             setScrollableAreaLimitLatitude(MapView.getTileSystem().getMaxLatitude(), MapView.getTileSystem().getMinLatitude(), 0)
             setScrollableAreaLimitLongitude(MapView.getTileSystem().getMinLongitude(), MapView.getTileSystem().getMaxLongitude(), 0)
-            tilesOverlay.loadingBackgroundColor = android.graphics.Color.TRANSPARENT
-            tilesOverlay.loadingLineColor = android.graphics.Color.TRANSPARENT
             controller.setZoom(DEFAULT_ZOOM)
             controller.setCenter(OsmGeoPoint(DEFAULT_LAT, DEFAULT_LON))
             minZoomLevel = 4.0
@@ -116,7 +114,7 @@ fun HazardMap(
             viewportWatcher.attach(view)
             markerController.updateMarkers(
                 mapView = view,
-                places = uiState.places,
+                places = uiState.allPlaces,
                 activeId = uiState.activePlaceId,
                 onMarkerSelected = onMarkerSelected
             )
