@@ -53,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.SheetValue
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -128,7 +129,6 @@ fun HazardGridApp() {
     )
     val coroutineScope = rememberCoroutineScope()
     var webViewUrl by remember { mutableStateOf<String?>(null) }
-    var showBottomSheet by remember { mutableStateOf(false) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val context = LocalContext.current
@@ -246,7 +246,7 @@ fun HazardGridApp() {
                 colorScheme = MaterialTheme.colorScheme,
                 onMarkerSelected = { place ->
                     viewModel.setActivePlace(place.id, centerOnMap = true)
-                    showBottomSheet = true
+                    coroutineScope.launch { sheetState.show() }
                 },
                 onViewportChanged = viewModel::updateViewport,
                 mapEvents = viewModel.mapEvents
@@ -254,8 +254,8 @@ fun HazardGridApp() {
 
             LocationOrientationButton(
                 modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 24.dp, end = 16.dp),
+                    .align(Alignment.BottomEnd)
+                    .padding(bottom = 24.dp, end = 16.dp),
                 mode = locationMode,
                 hasLocationPermission = hasLocationPermission,
                 isLocationAvailable = locationHeadingState.location != null,
@@ -275,14 +275,14 @@ fun HazardGridApp() {
                 )
             }
 
-            if (showBottomSheet) {
+            if (sheetState.isVisible) {
                 ModalBottomSheet(
-                    onDismissRequest = { showBottomSheet = false },
+                    onDismissRequest = { coroutineScope.launch { sheetState.hide() } },
                     sheetState = sheetState,
                     shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
                     dragHandle = { HazardSheetHandle() },
-                    containerColor = NightOverlay.copy(alpha = 0.97f),
-                    contentColor = TextPrimary,
+                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                    contentColor = MaterialTheme.colorScheme.onSurface,
                     tonalElevation = 14.dp,
                     shadowElevation = 32.dp,
                 ) {
@@ -455,8 +455,8 @@ private fun HazardSheetHeader(
     ) {
         Surface(
             shape = RoundedCornerShape(18.dp),
-            color = NightOverlay.copy(alpha = 0.9f),
-            border = BorderStroke(1.dp, SurfaceBorder),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
             tonalElevation = 0.dp
         ) {
             Row(
@@ -468,12 +468,12 @@ private fun HazardSheetHeader(
                 Icon(
                     imageVector = Icons.Rounded.WarningAmber,
                     contentDescription = null,
-                    tint = AccentPrimary
+                    tint = MaterialTheme.colorScheme.primary
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = "Radiation feed",
-                        color = TextPrimary,
+                        color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.SemiBold
                     )
                     val filteredCount = uiState.searchResults.size
@@ -481,7 +481,7 @@ private fun HazardSheetHeader(
                     val countText = if (total > 0) "$filteredCount / $total" else filteredCount.toString()
                     Text(
                         text = "Signals online: $countText",
-                        color = TextSecondary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -492,7 +492,7 @@ private fun HazardSheetHeader(
             TextButton(onClick = onClearFilters) {
                 Text(
                     text = "Reset filters",
-                    color = AccentPrimary,
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -501,7 +501,7 @@ private fun HazardSheetHeader(
             Icon(
                 imageVector = if (isExpanded) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
                 contentDescription = if (isExpanded) "Collapse sheet" else "Expand sheet",
-                tint = AccentPrimary
+                tint = MaterialTheme.colorScheme.primary
             )
         }
     }
@@ -520,7 +520,7 @@ private fun HazardSheetHandle() {
                 .width(72.dp)
                 .height(8.dp)
                 .clip(RoundedCornerShape(32.dp))
-                .background(AccentPrimary.copy(alpha = 0.75f))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.75f))
         )
     }
 }
@@ -550,12 +550,12 @@ private fun LocationOrientationButton(
         else -> "Disable compass mode"
     }
     val iconAlpha = if (!isLocationAvailable && hasLocationPermission && mode != LocationMode.Idle) 0.6f else 1f
-    val iconTint = if (mode == LocationMode.Oriented) AccentPrimary else Color.White
+    val iconTint = if (mode == LocationMode.Oriented) MaterialTheme.colorScheme.primary else Color.White
 
     Surface(
         modifier = modifier.size(52.dp),
         shape = CircleShape,
-        color = NightOverlay.copy(alpha = backgroundAlpha),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = backgroundAlpha),
         shadowElevation = 12.dp,
         tonalElevation = 0.dp,
         onClick = onClick
@@ -590,24 +590,24 @@ private fun HazardPulseIndicator() {
         modifier = Modifier
             .size(28.dp)
             .clip(CircleShape)
-            .background(AccentPrimary.copy(alpha = glowAlpha * 0.35f)),
+            .background(MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.35f)),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
                 .size(14.dp)
                 .clip(CircleShape)
-                .background(AccentPrimary.copy(alpha = glowAlpha))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha))
         )
     }
 }
 
 @Composable
 private fun HazardBackground() {
-    Box(modifier = Modifier.fillMaxSize().background(NightBackground)) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val gridSpacing = 72.dp.toPx()
-            val color = TextMuted.copy(alpha = 0.1f)
+            val color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
             val strokeWidth = 1.dp.toPx()
             var x = 0f
             while (x < size.width) {
@@ -629,22 +629,6 @@ private fun HazardBackground() {
                 )
                 y += gridSpacing
             }
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0x33F5C400), Color.Transparent),
-                    center = Offset(size.width * 0.15f, size.height * 0.1f),
-                    radius = size.minDimension
-                ),
-                size = Size(size.width, size.height)
-            )
-            drawRect(
-                brush = Brush.radialGradient(
-                    colors = listOf(Color(0x33FF5050), Color.Transparent),
-                    center = Offset(size.width * 0.85f, size.height * 0.12f),
-                    radius = size.minDimension * 0.8f
-                ),
-                size = Size(size.width, size.height)
-            )
         }
     }
 }

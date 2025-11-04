@@ -40,7 +40,7 @@ fun HazardMap(
     val context = LocalContext.current
     val mapView = remember(context) {
         MapView(context).apply {
-            setTileSource(TileSourceFactory.USGS_SAT)
+            setTileSource(TileSourceFactory.MAPNIK)
             setMultiTouchControls(true)
             isTilesScaledToDpi = true
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
@@ -126,10 +126,11 @@ private class MarkerController(
         activeId: Int?,
         onMarkerSelected: (Place) -> Unit,
     ) {
-        clusterer.items.clear()
+        val existingPlaceIds = markers.keys.toMutableSet()
         for (place in places) {
             val marker = markers[place.id] ?: createMarker(mapView, place).also {
                 markers[place.id] = it
+                clusterer.add(it)
             }
             if (place.lat != null && place.lon != null) {
                 marker.position = OsmGeoPoint(place.lat, place.lon)
@@ -140,14 +141,26 @@ private class MarkerController(
                 true
             }
             marker.infoWindow = null
-            clusterer.add(marker)
+            existingPlaceIds.remove(place.id)
         }
+
+        for (placeId in existingPlaceIds) {
+            markers.remove(placeId)?.let {
+                clusterer.remove(it)
+            }
+        }
+
         markers[activeId]?.icon = markerFactory.getDrawable(true)
+        pulseActiveMarker(activeId)
         clusterer.invalidate()
     }
 
     fun pulseActiveMarker(activeId: Int?) {
-        // Intentionally left for future pulse animation hook
+        val marker = markers[activeId] ?: return
+        val cluster = clusterer.getCluster(marker)
+        if (cluster != null) {
+            cluster.mItems.find { it == marker }?.icon = markerFactory.getDrawable(true)
+        }
     }
 
     private fun createMarker(mapView: MapView, place: Place): Marker {
