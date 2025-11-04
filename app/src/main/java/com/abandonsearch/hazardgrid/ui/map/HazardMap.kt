@@ -25,6 +25,7 @@ import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint as OsmGeoPoint
+import org.osmdroid.views.overlay.Marker
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
@@ -36,7 +37,6 @@ fun HazardMap(
     onMarkerSelected: (Place) -> Unit,
     onViewportChanged: (MapViewport) -> Unit,
     mapEvents: Flow<HazardGridViewModel.MapCommand>,
-    onActiveMarkerPosition: (Offset?) -> Unit = {},
 ) {
     val context = LocalContext.current
     val mapView = remember(context) {
@@ -51,11 +51,13 @@ fun HazardMap(
             maxZoomLevel = 19.0
         }
     }
-    val markerController = remember { MarkerController(context) }
+    val markerClusterer = remember { AnimatedRadiusMarkerClusterer(context) }
+    val markerController = remember { MarkerController(context, markerClusterer) }
     val viewportWatcher = remember { ViewportWatcher(onViewportChanged) }
 
     DisposableEffect(mapView) {
         mapView.onResume()
+        mapView.overlays.add(markerClusterer)
         viewportWatcher.attach(mapView)
         onDispose {
             viewportWatcher.detach(mapView)
@@ -108,26 +110,13 @@ fun HazardMap(
                 activeId = uiState.activePlaceId,
                 onMarkerSelected = onMarkerSelected
             )
-            val activePlace = uiState.activePlace
-            if (activePlace?.lat != null && activePlace.lon != null) {
-                val projection = view.projection
-                if (projection != null) {
-                    val geoPoint = OsmGeoPoint(activePlace.lat, activePlace.lon)
-                    val screenPoint = Point()
-                    projection.toPixels(geoPoint, screenPoint)
-                    onActiveMarkerPosition(Offset(screenPoint.x.toFloat(), screenPoint.y.toFloat()))
-                } else {
-                    onActiveMarkerPosition(null)
-                }
-            } else {
-                onActiveMarkerPosition(null)
-            }
         }
     )
 }
 
 private class MarkerController(
     context: android.content.Context,
+    private val clusterer: AnimatedRadiusMarkerClusterer,
 ) {
     private val markers = LinkedHashMap<Int, Marker>()
     private val markerFactory = HazardMarkerFactory(context)
@@ -138,22 +127,10 @@ private class MarkerController(
         activeId: Int?,
         onMarkerSelected: (Place) -> Unit,
     ) {
-        val desiredIds = places.map { it.id }.toMutableSet()
-        if (activeId != null) {
-            desiredIds += activeId
-        }
-        val iterator = markers.iterator()
-        while (iterator.hasNext()) {
-            val entry = iterator.next()
-            if (entry.key !in desiredIds) {
-                mapView.overlays.remove(entry.value)
-                iterator.remove()
-            }
-        }
+        clusterer.items.clear()
         for (place in places) {
             val marker = markers[place.id] ?: createMarker(mapView, place).also {
                 markers[place.id] = it
-                mapView.overlays.add(it)
             }
             if (place.lat != null && place.lon != null) {
                 marker.position = OsmGeoPoint(place.lat, place.lon)
@@ -164,9 +141,10 @@ private class MarkerController(
                 true
             }
             marker.infoWindow = null
+            clusterer.add(marker)
         }
         markers[activeId]?.icon = markerFactory.getDrawable(true)
-        mapView.invalidate()
+        clusterer.invalidate()
     }
 
     fun pulseActiveMarker(activeId: Int?) {

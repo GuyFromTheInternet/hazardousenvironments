@@ -29,11 +29,10 @@ fun buildMapsUrl(place: Place): String? {
     val lon = place.lon
     return when {
         lat != null && lon != null -> {
-            val label = Uri.encode(place.title.ifBlank { "Location" })
-            "https://maps.google.com/?q=$lat,$lon($label)"
+            "https://yandex.com/maps/?pt=$lon,$lat"
         }
         place.address.isNotBlank() -> {
-            "https://maps.google.com/?q=${Uri.encode(place.address)}"
+            "https://yandex.com/maps/?text=${Uri.encode(place.address)}"
         }
         else -> null
     }

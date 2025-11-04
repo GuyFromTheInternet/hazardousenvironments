@@ -66,6 +66,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.2")
     implementation("androidx.navigation:navigation-compose:2.8.1")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material3:material3-dynamic-colors")
     implementation("androidx.compose.material3:material3-window-size-class")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.ui:ui")
@@ -81,6 +82,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
     implementation("org.osmdroid:osmdroid-android:6.1.18")
+    implementation("com.github.MKergall:osmbonuspack:6.9.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     testImplementation("junit:junit:4.13.2")

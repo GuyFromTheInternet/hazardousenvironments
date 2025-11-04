@@ -40,6 +40,7 @@ fun PlaceDetailCard(
     place: Place,
     modifier: Modifier = Modifier.fillMaxWidth(),
     onClose: () -> Unit,
+    onOpenIntel: (String) -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -119,10 +120,7 @@ fun PlaceDetailCard(
                 val url = place.url
                 if (url.isNotBlank()) {
                     TextButton(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            context.startActivity(intent)
-                        },
+                        onClick = { onOpenIntel(url) },
                         colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary)
                     ) {
                         Text("Open intel")
