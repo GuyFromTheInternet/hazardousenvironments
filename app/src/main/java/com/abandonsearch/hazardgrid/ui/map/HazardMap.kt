@@ -126,7 +126,7 @@ private class MarkerController(
         activeId: Int?,
         onMarkerSelected: (Place) -> Unit,
     ) {
-        clusterer.items().clear()
+        clusterer.items.clear()
         for (place in places) {
             val marker = markers[place.id] ?: createMarker(mapView, place).also {
                 markers[place.id] = it
