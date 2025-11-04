@@ -95,10 +95,12 @@ fun FilterPanel(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        HazardSearchSection(
-            query = uiState.filterState.query,
-            onSearchChange = onSearchChange
-        )
+        if (uiState.activePlace == null) {
+            HazardSearchSection(
+                query = uiState.filterState.query,
+                onSearchChange = onSearchChange
+            )
+        }
         LazyColumn(
             state = listState,
             verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -107,48 +109,49 @@ fun FilterPanel(
                 Spacer(modifier = Modifier.height(20.dp))
             }
             item {
-            HazardFilterSection(
-                isCompact = isCompact,
-                onFloorsChange = onFloorsChange,
-                onSecurityChange = onSecurityChange,
-                onInteriorChange = onInteriorChange,
-                onAgeChange = onAgeChange,
-                onRatingChange = onRatingChange,
-                onSortChange = onSortChange,
-                uiState = uiState
-            )
-        }
-        item {
-            HazardSectionTitle(
-                label = "Intel feed",
-                resultCount = uiState.searchResults.size,
-                totalCount = uiState.totalValid
-            )
-        }
-        if (uiState.searchResults.isEmpty()) {
+                HazardFilterSection(
+                    isCompact = isCompact,
+                    onFloorsChange = onFloorsChange,
+                    onSecurityChange = onSecurityChange,
+                    onInteriorChange = onInteriorChange,
+                    onAgeChange = onAgeChange,
+                    onRatingChange = onRatingChange,
+                    onSortChange = onSortChange,
+                    uiState = uiState
+                )
+            }
             item {
-                Text(
-                    text = if (uiState.filterState.query.isBlank() && !uiState.hasFilters) {
-                        "Incoming signals… stand by."
-                    } else {
-                        "No signal matches the current filters."
-                    },
-                    color = TextMuted,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(vertical = 32.dp)
+                HazardSectionTitle(
+                    label = "Intel feed",
+                    resultCount = uiState.searchResults.size,
+                    totalCount = uiState.totalValid
                 )
             }
-        } else {
-            itemsIndexed(uiState.searchResults, key = { _, place -> place.id }) { _, place ->
-                val isActive = uiState.activePlaceId == place.id
-                ResultCard(
-                    place = place,
-                    isActive = isActive,
-                    onClick = { onResultSelected(place.id) }
-                )
+            if (uiState.searchResults.isEmpty()) {
+                item {
+                    Text(
+                        text = if (uiState.filterState.query.isBlank() && !uiState.hasFilters) {
+                            "Incoming signals… stand by."
+                        } else {
+                            "No signal matches the current filters."
+                        },
+                        color = TextMuted,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 32.dp)
+                    )
+                }
+            } else {
+                itemsIndexed(uiState.searchResults, key = { _, place -> place.id }) { _, place ->
+                    val isActive = uiState.activePlaceId == place.id
+                    ResultCard(
+                        place = place,
+                        isActive = isActive,
+                        onClick = { onResultSelected(place.id) }
+                    )
+                }
             }
+            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
-        item { Spacer(modifier = Modifier.height(24.dp)) }
     }
 }
 

@@ -2,6 +2,7 @@ package com.abandonsearch.hazardgrid.ui.map
 
 import android.os.Handler
 import android.os.Looper
+import android.view.MotionEvent
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -27,6 +28,7 @@ import org.osmdroid.util.GeoPoint as OsmGeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.util.LinkedHashMap
@@ -258,16 +260,6 @@ private fun MapView.toViewport(): MapViewport {
     )
 }
 
-private const val DEFAULT_LAT = 55.7558
-private const val DEFAULT_LON = 37.6173
-private const val DEFAULT_ZOOM = 10.0
-private const val FOCUS_ZOOM = 15.0
-private const val ANIMATION_DURATION = 800L
-
-import org.osmdroid.views.overlay.Overlay
-import android.view.MotionEvent
-import org.osmdroid.api.IGeoPoint
-
 private fun normalizeBearing(bearing: Float): Float {
     var value = bearing % 360f
     if (value < 0f) value += 360f
@@ -290,3 +282,9 @@ private class MapClickListener(
         return false
     }
 }
+
+private const val DEFAULT_LAT = 55.7558
+private const val DEFAULT_LON = 37.6173
+private const val DEFAULT_ZOOM = 10.0
+private const val FOCUS_ZOOM = 15.0
+private const val ANIMATION_DURATION = 800L

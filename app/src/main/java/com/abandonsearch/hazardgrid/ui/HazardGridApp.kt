@@ -299,8 +299,10 @@ fun HazardGridApp() {
                 uiState = uiState,
                 colorScheme = MaterialTheme.colorScheme,
                 onMarkerSelected = { place ->
-                    viewModel.setActivePlace(place.id, centerOnMap = true)
-                    coroutineScope.launch { sheetState.partialExpand() }
+                    viewModel.setActivePlace(place?.id, centerOnMap = place != null)
+                    if (place != null) {
+                        coroutineScope.launch { sheetState.partialExpand() }
+                    }
                 },
                 onViewportChanged = viewModel::updateViewport,
                 mapEvents = viewModel.mapEvents
