@@ -472,8 +472,8 @@ private fun HazardSheetHeader(
     ) {
         Surface(
             shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
             tonalElevation = 0.dp
         ) {
             Row(
@@ -490,7 +490,7 @@ private fun HazardSheetHeader(
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = "Radiation feed",
-                        color = MaterialTheme.colorScheme.onSurface,
+                        style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold
                     )
                     val filteredCount = uiState.searchResults.size
@@ -498,6 +498,7 @@ private fun HazardSheetHeader(
                     val countText = if (total > 0) "$filteredCount / $total" else filteredCount.toString()
                     Text(
                         text = "Signals online: $countText",
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
@@ -537,7 +538,7 @@ private fun HazardSheetHandle() {
                 .width(72.dp)
                 .height(8.dp)
                 .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.75f))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
         )
     }
 }
@@ -555,11 +556,6 @@ private fun LocationOrientationButton(
         LocationMode.Centered -> Icons.Rounded.GpsFixed
         LocationMode.Oriented -> Icons.Rounded.Navigation
     }
-    val backgroundAlpha = when (mode) {
-        LocationMode.Idle -> 0.85f
-        LocationMode.Centered -> 0.9f
-        LocationMode.Oriented -> 0.95f
-    }
     val contentDescription = when {
         !hasLocationPermission -> "Enable location access"
         mode == LocationMode.Idle -> "Center map on my position"
@@ -567,12 +563,22 @@ private fun LocationOrientationButton(
         else -> "Disable compass mode"
     }
     val iconAlpha = if (!isLocationAvailable && hasLocationPermission && mode != LocationMode.Idle) 0.6f else 1f
-    val iconTint = if (mode == LocationMode.Oriented) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+    val colorScheme = MaterialTheme.colorScheme
+    val containerColor = when (mode) {
+        LocationMode.Idle -> colorScheme.surface
+        LocationMode.Centered -> colorScheme.secondaryContainer
+        LocationMode.Oriented -> colorScheme.primaryContainer
+    }
+    val iconTint = when (mode) {
+        LocationMode.Idle -> colorScheme.onSurface
+        LocationMode.Centered -> colorScheme.onSecondaryContainer
+        LocationMode.Oriented -> colorScheme.onPrimaryContainer
+    }
 
     Surface(
         modifier = modifier.size(52.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = backgroundAlpha),
+        color = containerColor,
         shadowElevation = 12.dp,
         tonalElevation = 0.dp,
         onClick = onClick

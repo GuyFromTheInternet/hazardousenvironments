@@ -153,7 +153,7 @@ private class MarkerController(
 
         for (id in toRemove) {
             val marker = markers.remove(id)
-            clusterer.remove(marker)
+            marker?.let { clusterer.remove(it) }
         }
 
         for (place in places) {

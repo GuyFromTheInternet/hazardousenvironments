@@ -135,7 +135,7 @@ fun FilterPanel(
                         } else {
                             "No signal matches the current filters."
                         },
-                        color = TextMuted,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(vertical = 32.dp)
                     )
@@ -210,7 +210,7 @@ private fun HazardFilterSection(
     ) {
         Text(
             text = "Filter anomalies",
-            color = TextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium
         )
         val filterState = uiState.filterState
@@ -364,14 +364,14 @@ private fun HazardSectionTitle(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = label,
-            color = TextPrimary,
+            color = MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold
         )
         val totalText = if (totalCount > 0) "$resultCount / $totalCount" else resultCount.toString()
         Text(
             text = "Active signals: $totalText",
-            color = TextMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall
         )
         HazardDivider()
@@ -382,15 +382,15 @@ private fun HazardSectionTitle(
 private fun HazardFilterChip(text: String) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = NightOverlay.copy(alpha = 0.85f),
-        border = BorderStroke(1.dp, SurfaceBorder),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         tonalElevation = 4.dp,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
     ) {
         Text(
             text = text,
-            color = TextSecondary,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
         )
@@ -406,7 +406,7 @@ private fun HazardDivider() {
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(SurfaceBorder)
+            .background(MaterialTheme.colorScheme.outline)
     )
 }
 
