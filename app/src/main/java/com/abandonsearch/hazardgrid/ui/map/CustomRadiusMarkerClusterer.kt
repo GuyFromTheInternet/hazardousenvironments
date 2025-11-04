@@ -36,7 +36,6 @@ class CustomRadiusMarkerClusterer(
             true
         }
 
-        // Set the custom icon
         clusterPaint.color = colorScheme.primary.toArgb()
         textPaint.color = colorScheme.onPrimary.toArgb()
 
@@ -61,7 +60,7 @@ class CustomRadiusMarkerClusterer(
 
             val animator = ValueAnimator.ofFloat(0f, 1f)
             animator.duration = 400
-            animator.startDelay = (i * 40).toLong() // Stagger the animation
+            animator.startDelay = (i * 40).toLong()
             animator.addUpdateListener { animation ->
                 val fraction = animation.animatedValue as Float
                 val newLat = clusterCenter.latitude + fraction * (endPoint.latitude - clusterCenter.latitude)
@@ -71,7 +70,6 @@ class CustomRadiusMarkerClusterer(
             }
             animator.start()
         }
-        // Animate zoom after the markers have spread out
         mapView.controller.zoomTo(mapView.zoomLevelDouble + 1.5, 500L)
     }
 }
