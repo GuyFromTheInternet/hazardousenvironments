@@ -56,13 +56,6 @@ import com.abandonsearch.hazardgrid.domain.RatingFilter
 import com.abandonsearch.hazardgrid.domain.ScaleFilter
 import com.abandonsearch.hazardgrid.domain.SortOption
 import com.abandonsearch.hazardgrid.ui.state.HazardUiState
-import com.abandonsearch.hazardgrid.ui.theme.AccentPrimary
-import com.abandonsearch.hazardgrid.ui.theme.AccentStrong
-import com.abandonsearch.hazardgrid.ui.theme.NightOverlay
-import com.abandonsearch.hazardgrid.ui.theme.SurfaceBorder
-import com.abandonsearch.hazardgrid.ui.theme.TextMuted
-import com.abandonsearch.hazardgrid.ui.theme.TextPrimary
-import com.abandonsearch.hazardgrid.ui.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.collections.buildList
@@ -171,22 +164,12 @@ private fun HazardSearchSection(
         OutlinedTextField(
             value = query,
             onValueChange = onSearchChange,
-            placeholder = { Text("Search by title, intel, address", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+            placeholder = { Text("Search by title, intel, address") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Sentences,
                 imeAction = ImeAction.Search
             ),
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                cursorColor = MaterialTheme.colorScheme.primary,
-                focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                disabledContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f)
-            ),
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
             modifier = Modifier.fillMaxWidth()
         )
         HazardDivider()
@@ -382,9 +365,7 @@ private fun HazardSectionTitle(
 private fun HazardFilterChip(text: String) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        tonalElevation = 4.dp,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
     ) {

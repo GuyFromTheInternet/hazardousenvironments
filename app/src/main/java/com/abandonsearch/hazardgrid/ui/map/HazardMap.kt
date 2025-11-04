@@ -34,7 +34,14 @@ import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.util.LinkedHashMap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.pointerInteropFilter
+import kotlin.math.atan2
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HazardMap(
     modifier: Modifier = Modifier,
@@ -42,6 +49,8 @@ fun HazardMap(
     colorScheme: ColorScheme,
     onMarkerSelected: (Place?) -> Unit,
     onViewportChanged: (MapViewport) -> Unit,
+    onDragStart: () -> Unit,
+    onDragEnd: () -> Unit,
     mapEvents: Flow<HazardGridViewModel.MapCommand>,
 ) {
     val context = LocalContext.current
@@ -127,20 +136,44 @@ fun HazardMap(
             activeId = uiState.activePlaceId,
             onMarkerSelected = onMarkerSelected
         )
+        // Ensure the map redraws when the selection changes to remove old selection outlines
+        mapView.invalidate()
     }
 
-    androidx.compose.ui.viewinterop.AndroidView(
-        modifier = modifier.pointerInput(Unit) {
-            detectTransformGestures { _, pan, zoom, rotation ->
-                if (kotlin.math.abs(zoom - 1f) < 0.05f) {
-                    mapView.mapOrientation = mapView.mapOrientation + rotation
-                }
-                mapView.scrollBy(-pan.x.toInt(), -pan.y.toInt())
-            }
-        },
+    var angle by remember { mutableStateOf(0f) }
+    var previousAngle by remember { mutableStateOf(0f) }
+    AndroidView(
         factory = { mapView },
-        update = { view ->
-            viewportWatcher.attach(view)
+        modifier = modifier.pointerInteropFilter {
+            when (it.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    onDragStart()
+                    previousAngle = 0f
+                    angle = 0f
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> {
+                    previousAngle = 0f
+                    angle = 0f
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (it.pointerCount > 1) {
+                        val touch1 = MotionEvent.PointerCoords().also { c -> it.getPointerCoords(0, c) }
+                        val touch2 = MotionEvent.PointerCoords().also { c -> it.getPointerCoords(1, c) }
+                        angle = atan2(touch2.y - touch1.y, touch2.x - touch1.x) * 180 / Math.PI.toFloat()
+                        if (previousAngle != 0f) {
+                            val rotation = angle - previousAngle
+                            mapView.mapOrientation = mapView.mapOrientation + rotation
+                        }
+                        previousAngle = angle
+                    }
+                }
+                MotionEvent.ACTION_UP -> {
+                    onDragEnd()
+                    previousAngle = 0f
+                    angle = 0f
+                }
+            }
+            false
         }
     )
 }
@@ -149,7 +182,6 @@ private class MarkerController(
     context: android.content.Context,
     private val clusterer: CustomRadiusMarkerClusterer,
 ) {
-    private val markers = LinkedHashMap<Int, Marker>()
     private val markerFactory = HazardMarkerFactory(context)
 
     fun updateMarkers(
@@ -159,20 +191,17 @@ private class MarkerController(
         onMarkerSelected: (Place?) -> Unit,
     ) {
         clusterer.items.clear()
-        markers.clear()
         places.forEach { place ->
             val marker = createMarker(mapView, place)
+            marker.icon = markerFactory.getDrawable(place.id == activeId)
             marker.setOnMarkerClickListener { _, _ ->
                 onMarkerSelected(place)
                 true
             }
-            markers[place.id] = marker
             clusterer.add(marker)
         }
-        for ((id, marker) in markers) {
-            marker.icon = markerFactory.getDrawable(id == activeId)
-        }
         clusterer.invalidate()
+        mapView.invalidate()
     }
 
     fun pulseActiveMarker(activeId: Int?) {

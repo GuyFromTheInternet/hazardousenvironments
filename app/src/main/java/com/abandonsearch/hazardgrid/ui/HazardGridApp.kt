@@ -44,15 +44,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.GpsFixed
 import androidx.compose.material.icons.rounded.MyLocation
-import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.BottomSheetScaffold
@@ -136,6 +134,17 @@ fun HazardGridApp() {
     var webViewUrl by remember { mutableStateOf<String?>(null) }
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val peekHeight = 80.dp + navBarHeight
+        var isMapDragging by remember { mutableStateOf(false) }
+
+        LaunchedEffect(isMapDragging) {
+            coroutineScope.launch {
+                if (isMapDragging) {
+                    sheetState.partialExpand()
+                } else if (sheetState.currentValue == SheetValue.PartiallyExpanded) {
+                    sheetState.expand()
+                }
+            }
+        }
 
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
@@ -195,101 +204,30 @@ fun HazardGridApp() {
         var hasLocationPermission by remember {
             mutableStateOf(checkLocationPermission(context))
         }
-        var locationMode by remember { mutableStateOf(LocationMode.Idle) }
-        var lastCenteredLocation by remember { mutableStateOf<GeoPoint?>(null) }
-        var lastOrientationBearing by remember { mutableStateOf<Float?>(null) }
-
         val permissionLauncher = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
         ) { result ->
-            val grantedByLauncher = result.entries.any { it.value }
-            val currentStatus = checkLocationPermission(context)
-            hasLocationPermission = grantedByLauncher || currentStatus
-            if (hasLocationPermission && locationMode == LocationMode.Idle) {
-                locationMode = LocationMode.Centered
-            }
-        }
-
-        LaunchedEffect(Unit) {
-            hasLocationPermission = checkLocationPermission(context)
-        }
-
-        LaunchedEffect(hasLocationPermission) {
-            if (!hasLocationPermission) {
-                locationMode = LocationMode.Idle
-            }
+            hasLocationPermission = result.entries.any { it.value }
         }
 
         val locationHeadingState = rememberLocationHeadingState(
-            requestUpdates = locationMode != LocationMode.Idle,
+            requestUpdates = hasLocationPermission,
             hasLocationPermission = hasLocationPermission,
         )
 
-        LaunchedEffect(locationMode) {
-            if (locationMode != LocationMode.Oriented && lastOrientationBearing != null) {
-                viewModel.sendMapCommand(HazardGridViewModel.MapCommand.ResetOrientation)
-                lastOrientationBearing = null
-            }
-            if (locationMode == LocationMode.Idle) {
-                lastCenteredLocation = null
-            }
-        }
-
-        LaunchedEffect(locationHeadingState.location, locationMode, hasLocationPermission) {
-            if (!hasLocationPermission) return@LaunchedEffect
-            val currentLocation = locationHeadingState.location ?: return@LaunchedEffect
-            if (locationMode == LocationMode.Centered || locationMode == LocationMode.Oriented) {
-                val shouldCenter = shouldRecentre(lastCenteredLocation, currentLocation)
-                if (shouldCenter) {
-                    val zoom = if (locationMode == LocationMode.Centered) {
-                        LOCATION_FOCUS_ZOOM
-                    } else {
-                        ORIENTATION_FOCUS_ZOOM
-                    }
+        val onGpsButtonClick: () -> Unit = {
+            if (hasLocationPermission) {
+                locationHeadingState.location?.let {
                     viewModel.sendMapCommand(
                         HazardGridViewModel.MapCommand.FocusOnLocation(
-                            location = currentLocation,
-                            zoom = zoom,
-                            animate = true
+                            location = it,
+                            zoom = LOCATION_FOCUS_ZOOM,
+                            animate = false
                         )
                     )
-                    lastCenteredLocation = currentLocation
                 }
-            }
-        }
-
-        LaunchedEffect(locationHeadingState.heading, locationMode) {
-            if (locationMode == LocationMode.Oriented) {
-                val heading = locationHeadingState.heading ?: return@LaunchedEffect
-                val previous = lastOrientationBearing
-                if (previous == null || bearingDelta(previous, heading) >= ORIENTATION_MIN_DELTA_DEGREES) {
-                    viewModel.sendMapCommand(
-                        HazardGridViewModel.MapCommand.SetOrientation(
-                            bearing = heading
-                        )
-                    )
-                    lastOrientationBearing = heading
-                } else {
-                    lastOrientationBearing = heading
-                }
-            }
-        }
-
-        val onGpsButtonClick: () -> Unit = {
-            when (locationMode) {
-                LocationMode.Idle -> {
-                    if (hasLocationPermission) {
-                        locationMode = LocationMode.Centered
-                    } else {
-                        permissionLauncher.launch(locationPermissions)
-                    }
-                }
-                LocationMode.Centered -> {
-                    locationMode = LocationMode.Oriented
-                }
-                LocationMode.Oriented -> {
-                    locationMode = LocationMode.Idle
-                }
+            } else {
+                permissionLauncher.launch(locationPermissions)
             }
         }
 
@@ -301,20 +239,18 @@ fun HazardGridApp() {
                 colorScheme = MaterialTheme.colorScheme,
                 onMarkerSelected = { place ->
                     viewModel.setActivePlace(place?.id, centerOnMap = place != null)
-                    if (place != null) {
-                        coroutineScope.launch { sheetState.partialExpand() }
-                    }
                 },
                 onViewportChanged = viewModel::updateViewport,
+                onDragStart = { isMapDragging = true },
+                onDragEnd = { isMapDragging = false },
                 mapEvents = viewModel.mapEvents
             )
 
-            LocationOrientationButton(
+            LocationButton(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .padding(innerPadding)
                     .padding(bottom = 24.dp, end = 16.dp),
-                mode = locationMode,
                 hasLocationPermission = hasLocationPermission,
                 isLocationAvailable = locationHeadingState.location != null,
                 onClick = onGpsButtonClick
@@ -383,17 +319,9 @@ private fun bearingDelta(from: Float, to: Float): Float {
     return abs(diff)
 }
 
-private enum class LocationMode {
-    Idle,
-    Centered,
-    Oriented,
-}
-
 private const val LOCATION_RECENTER_THRESHOLD_METERS = 8.0
 private const val EARTH_RADIUS_METERS = 6_371_000.0
 private const val LOCATION_FOCUS_ZOOM = 17.5
-private const val ORIENTATION_FOCUS_ZOOM = 18.0
-private const val ORIENTATION_MIN_DELTA_DEGREES = 2f
 
 @Composable
 private fun hazardGridViewModel(): HazardGridViewModel {
@@ -545,55 +473,24 @@ private fun HazardSheetHandle() {
 }
 
 @Composable
-private fun LocationOrientationButton(
+private fun LocationButton(
     modifier: Modifier = Modifier,
-    mode: LocationMode,
     hasLocationPermission: Boolean,
     isLocationAvailable: Boolean,
     onClick: () -> Unit,
 ) {
-    val icon = when (mode) {
-        LocationMode.Idle -> Icons.Rounded.MyLocation
-        LocationMode.Centered -> Icons.Rounded.GpsFixed
-        LocationMode.Oriented -> Icons.Rounded.Navigation
-    }
-    val contentDescription = when {
-        !hasLocationPermission -> "Enable location access"
-        mode == LocationMode.Idle -> "Center map on my position"
-        mode == LocationMode.Centered -> "Rotate map to match my direction"
-        else -> "Disable compass mode"
-    }
-    val iconAlpha = if (!isLocationAvailable && hasLocationPermission && mode != LocationMode.Idle) 0.6f else 1f
-    val colorScheme = MaterialTheme.colorScheme
-    val containerColor = when (mode) {
-        LocationMode.Idle -> colorScheme.surface
-        LocationMode.Centered -> colorScheme.secondaryContainer
-        LocationMode.Oriented -> colorScheme.primaryContainer
-    }
-    val iconTint = when (mode) {
-        LocationMode.Idle -> colorScheme.onSurface
-        LocationMode.Centered -> colorScheme.onSecondaryContainer
-        LocationMode.Oriented -> colorScheme.onPrimaryContainer
-    }
+    val contentDescription = if (hasLocationPermission) "Center map on my position" else "Enable location access"
+    val iconAlpha = if (!isLocationAvailable && hasLocationPermission) 0.6f else 1f
 
-    Surface(
-        modifier = modifier.size(52.dp),
-        shape = CircleShape,
-        color = containerColor,
-        shadowElevation = 12.dp,
-        tonalElevation = 0.dp,
+    FilledIconButton(
+        modifier = modifier,
         onClick = onClick
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = contentDescription,
-                tint = iconTint.copy(alpha = iconAlpha)
-            )
-        }
+        Icon(
+            imageVector = Icons.Rounded.MyLocation,
+            contentDescription = contentDescription,
+            modifier = Modifier.alpha(iconAlpha)
+        )
     }
 }
 
