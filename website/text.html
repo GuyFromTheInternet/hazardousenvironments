@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hazard Grid Data Export</title>
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      margin: 0;
+      background: #050505;
+      color: #f2f2f2;
+      font-family: "Share Tech Mono", "Courier New", monospace;
+      min-height: 100vh;
+      display: flex;
+      align-items: stretch;
+      justify-content: stretch;
+    }
+    pre {
+      margin: 0;
+      padding: 24px;
+      white-space: pre;
+      overflow: auto;
+      flex: 1;
+    }
+  </style>
+</head>
+<body>
+  <pre id="payload" aria-label="Hazard location data"></pre>
+  <script src="places-data.js"></script>
+  <script>
+    const target = document.getElementById('payload');
+    const payload = Array.isArray(window.PLACES_DATA) ? window.PLACES_DATA : [];
+    target.textContent = JSON.stringify(payload, null, 2);
+  </script>
+</body>
+</html>

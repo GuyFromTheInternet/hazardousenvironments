@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import com.abandonsearch.hazardgrid.ui.HazardGridApp
 import com.abandonsearch.hazardgrid.ui.theme.HazardGridTheme
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

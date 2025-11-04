@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -55,6 +56,13 @@ import com.abandonsearch.hazardgrid.domain.RatingFilter
 import com.abandonsearch.hazardgrid.domain.ScaleFilter
 import com.abandonsearch.hazardgrid.domain.SortOption
 import com.abandonsearch.hazardgrid.ui.state.HazardUiState
+import com.abandonsearch.hazardgrid.ui.theme.AccentPrimary
+import com.abandonsearch.hazardgrid.ui.theme.AccentStrong
+import com.abandonsearch.hazardgrid.ui.theme.NightOverlay
+import com.abandonsearch.hazardgrid.ui.theme.SurfaceBorder
+import com.abandonsearch.hazardgrid.ui.theme.TextMuted
+import com.abandonsearch.hazardgrid.ui.theme.TextPrimary
+import com.abandonsearch.hazardgrid.ui.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.collections.buildList
@@ -124,7 +132,7 @@ fun FilterPanel(
                     } else {
                         "No signal matches the current filters."
                     },
-                    color = MaterialTheme.colorScheme.outline,
+                    color = TextMuted,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 32.dp)
                 )
@@ -152,29 +160,29 @@ private fun HazardSearchSection(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             text = "Search the grid",
-            color = MaterialTheme.colorScheme.primary,
+            color = AccentPrimary,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold
         )
         OutlinedTextField(
             value = query,
             onValueChange = onSearchChange,
-            placeholder = { Text("Search by title, intel, address", color = MaterialTheme.colorScheme.outline) },
+            placeholder = { Text("Search by title, intel, address", color = TextMuted) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Sentences,
                 imeAction = ImeAction.Search
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                focusedLabelColor = MaterialTheme.colorScheme.primary,
-                cursorColor = MaterialTheme.colorScheme.primary,
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
-                disabledContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+                unfocusedBorderColor = SurfaceBorder,
+                focusedBorderColor = AccentPrimary,
+                focusedLabelColor = AccentPrimary,
+                cursorColor = AccentPrimary,
+                focusedContainerColor = NightOverlay.copy(alpha = 0.9f),
+                unfocusedContainerColor = NightOverlay.copy(alpha = 0.85f),
+                disabledContainerColor = NightOverlay.copy(alpha = 0.8f)
             ),
-            textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurfaceVariant),
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextSecondary),
             modifier = Modifier.fillMaxWidth()
         )
         HazardDivider()
@@ -198,7 +206,7 @@ private fun HazardFilterSection(
     ) {
         Text(
             text = "Filter anomalies",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = TextSecondary,
             style = MaterialTheme.typography.labelMedium
         )
         val filterState = uiState.filterState
@@ -352,14 +360,14 @@ private fun HazardSectionTitle(
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(
             text = label,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = TextPrimary,
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold
         )
         val totalText = if (totalCount > 0) "$resultCount / $totalCount" else resultCount.toString()
         Text(
             text = "Active signals: $totalText",
-            color = MaterialTheme.colorScheme.outline,
+            color = TextMuted,
             style = MaterialTheme.typography.bodySmall
         )
         HazardDivider()
@@ -370,15 +378,15 @@ private fun HazardSectionTitle(
 private fun HazardFilterChip(text: String) {
     Surface(
         shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = NightOverlay.copy(alpha = 0.85f),
+        border = BorderStroke(1.dp, SurfaceBorder),
         tonalElevation = 4.dp,
         modifier = Modifier
             .clip(RoundedCornerShape(50))
     ) {
         Text(
             text = text,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = TextSecondary,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
         )
@@ -394,7 +402,7 @@ private fun HazardDivider() {
         modifier = Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(MaterialTheme.colorScheme.outlineVariant)
+            .background(SurfaceBorder)
     )
 }
 
@@ -417,9 +425,9 @@ private fun ResultCard(
         shadowElevation = if (isActive) 24.dp else 10.dp,
         border = BorderStroke(
             1.dp,
-            if (isActive) MaterialTheme.colorScheme.error.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+            if (isActive) AccentStrong.copy(alpha = 0.5f) else SurfaceBorder
         ),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isActive) 0.98f else 0.94f),
+        color = NightOverlay.copy(alpha = if (isActive) 0.98f else 0.94f),
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
@@ -433,7 +441,7 @@ private fun ResultCard(
                 Text(
                     text = place.title.ifBlank { "Unknown site" },
                     style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = TextPrimary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -441,7 +449,7 @@ private fun ResultCard(
                     Text(
                         text = place.address,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.outline,
+                        color = TextMuted,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -451,7 +459,7 @@ private fun ResultCard(
                 Text(
                     text = place.description.trim(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = TextSecondary,
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -479,7 +487,7 @@ private fun ResultCard(
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl))
                             context.startActivity(intent)
                         },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
+                        colors = ButtonDefaults.textButtonColors(contentColor = AccentPrimary)
                     ) {
                         Text("Open maps", fontWeight = FontWeight.SemiBold)
                     }
@@ -490,7 +498,7 @@ private fun ResultCard(
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(place.url))
                             context.startActivity(intent)
                         },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurfaceVariant)
+                        colors = ButtonDefaults.textButtonColors(contentColor = TextSecondary)
                     ) {
                         Text("Open intel")
                     }

@@ -127,14 +127,6 @@ class HazardGridViewModel(
         _mapEvents.tryEmit(command)
     }
 
-    fun openWebView(url: String) {
-        _uiState.update { it.copy(webViewUrl = url) }
-    }
-
-    fun closeWebView() {
-        _uiState.update { it.copy(webViewUrl = null) }
-    }
-
     fun focusNext(offset: Int) {
         val current = _uiState.value
         val results = current.searchResults

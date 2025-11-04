@@ -3,13 +3,20 @@ package com.abandonsearch.hazardgrid.ui
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,10 +29,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -39,7 +48,6 @@ import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -57,34 +65,55 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.abandonsearch.hazardgrid.data.Place
 import com.abandonsearch.hazardgrid.data.PlacesRepository
 import com.abandonsearch.hazardgrid.domain.GeoPoint
 import com.abandonsearch.hazardgrid.ui.components.ErrorOverlay
 import com.abandonsearch.hazardgrid.ui.components.FilterPanel
 import com.abandonsearch.hazardgrid.ui.components.LoadingOverlay
 import com.abandonsearch.hazardgrid.ui.components.PlaceDetailCard
-import com.abandonsearch.hazardgrid.ui.components.WebView
 import com.abandonsearch.hazardgrid.ui.map.HazardMap
 import com.abandonsearch.hazardgrid.ui.map.rememberLocationHeadingState
 import com.abandonsearch.hazardgrid.ui.state.HazardUiState
+import com.abandonsearch.hazardgrid.ui.theme.AccentPrimary
+import com.abandonsearch.hazardgrid.ui.theme.NightBackground
+import com.abandonsearch.hazardgrid.ui.theme.NightOverlay
+import com.abandonsearch.hazardgrid.ui.theme.SurfaceBorder
+import com.abandonsearch.hazardgrid.ui.theme.TextMuted
+import com.abandonsearch.hazardgrid.ui.theme.TextPrimary
+import com.abandonsearch.hazardgrid.ui.theme.TextSecondary
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
 fun HazardGridApp() {
     val viewModel = hazardGridViewModel()
@@ -108,16 +137,19 @@ fun HazardGridApp() {
         }
     }
 
-    if (uiState.webViewUrl != null) {
-        Dialog(onDismissRequest = { viewModel.closeWebView() }) {
-            Surface(shape = RoundedCornerShape(16.dp)) {
-                Column {
-                    WebView(url = uiState.webViewUrl!!)
-                    TextButton(onClick = { viewModel.closeWebView() }) {
-                        Text("Close")
-                    }
-                }
-            }
+    var activeMarkerPosition by remember { mutableStateOf<Offset?>(null) }
+    var cardSize by remember { mutableStateOf(IntSize.Zero) }
+
+    LaunchedEffect(uiState.activePlaceId) {
+        cardSize = IntSize.Zero
+        if (uiState.activePlaceId == null) {
+            activeMarkerPosition = null
+        }
+    }
+
+    LaunchedEffect(activeMarkerPosition, sheetState.currentValue) {
+        if (activeMarkerPosition == null || sheetState.currentValue == SheetValue.Expanded) {
+            cardSize = IntSize.Zero
         }
     }
 
@@ -126,45 +158,37 @@ fun HazardGridApp() {
         sheetPeekHeight = sheetPeekHeight,
         sheetShape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
         sheetDragHandle = { HazardSheetHandle() },
-        sheetContainerColor = MaterialTheme.colorScheme.surfaceVariant,
-        sheetContentColor = MaterialTheme.colorScheme.onSurface,
+        sheetContainerColor = NightOverlay.copy(alpha = 0.97f),
+        sheetContentColor = TextPrimary,
         sheetTonalElevation = 14.dp,
         sheetShadowElevation = 32.dp,
         sheetContent = {
-            if (uiState.activePlace != null) {
-                PlaceDetailCard(
-                    place = uiState.activePlace!!,
-                    onClose = { viewModel.setActivePlace(null, centerOnMap = false) },
-                    onOpenIntel = { viewModel.openWebView(it) }
-                )
-            } else {
-                HazardPeninsulaSheet(
-                    uiState = uiState,
-                    isCompact = isCompact,
-                    isExpanded = isSheetExpanded,
-                    onSearchChange = viewModel::updateQuery,
-                    onFloorsChange = viewModel::updateFloors,
-                    onSecurityChange = viewModel::updateSecurity,
-                    onInteriorChange = viewModel::updateInterior,
-                    onAgeChange = viewModel::updateAge,
-                    onRatingChange = viewModel::updateRating,
-                    onSortChange = viewModel::updateSort,
-                    onClearFilters = viewModel::clearFilters,
-                    onResultSelected = { placeId ->
-                        viewModel.setActivePlace(placeId, centerOnMap = true)
-                        coroutineScope.launch { sheetState.partialExpand() }
-                    },
-                    onToggleExpand = {
-                        coroutineScope.launch {
-                            if (isSheetExpanded) {
-                                sheetState.partialExpand()
-                            } else {
-                                sheetState.expand()
-                            }
+            HazardPeninsulaSheet(
+                uiState = uiState,
+                isCompact = isCompact,
+                isExpanded = isSheetExpanded,
+                onSearchChange = viewModel::updateQuery,
+                onFloorsChange = viewModel::updateFloors,
+                onSecurityChange = viewModel::updateSecurity,
+                onInteriorChange = viewModel::updateInterior,
+                onAgeChange = viewModel::updateAge,
+                onRatingChange = viewModel::updateRating,
+                onSortChange = viewModel::updateSort,
+                onClearFilters = viewModel::clearFilters,
+                onResultSelected = { placeId ->
+                    viewModel.setActivePlace(placeId, centerOnMap = true)
+                    coroutineScope.launch { sheetState.partialExpand() }
+                },
+                onToggleExpand = {
+                    coroutineScope.launch {
+                        if (isSheetExpanded) {
+                            sheetState.partialExpand()
+                        } else {
+                            sheetState.expand()
                         }
                     }
-                )
-            }
+                }
+            )
         }
     ) { innerPadding ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
@@ -276,6 +300,9 @@ fun HazardGridApp() {
                 }
             }
 
+            val density = LocalDensity.current
+            val pointerHeightPx = with(density) { PINNED_CARD_POINTER_HEIGHT.toPx() }
+
             HazardBackground()
             HazardMap(
                 modifier = Modifier.fillMaxSize(),
@@ -286,17 +313,105 @@ fun HazardGridApp() {
                 },
                 onViewportChanged = viewModel::updateViewport,
                 mapEvents = viewModel.mapEvents,
+                onActiveMarkerPosition = { activeMarkerPosition = it }
             )
 
             LocationOrientationButton(
                 modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(bottom = 24.dp, end = 16.dp),
+                    .align(Alignment.TopEnd)
+                    .padding(top = 24.dp, end = 16.dp),
                 mode = locationMode,
                 hasLocationPermission = hasLocationPermission,
                 isLocationAvailable = locationHeadingState.location != null,
                 onClick = onGpsButtonClick
             )
+
+            uiState.activePlace?.let { place ->
+                val closeCard: () -> Unit = {
+                    viewModel.setActivePlace(null, centerOnMap = false)
+                }
+                val markerOffset = activeMarkerPosition
+                val showCard = sheetState.currentValue != SheetValue.Expanded && markerOffset != null
+                if (showCard && markerOffset != null) {
+                    if (cardSize == IntSize.Zero) {
+                        MapPinnedPlaceCard(
+                            place = place,
+                            modifier = Modifier
+                                .alpha(0f)
+                                .onGloballyPositioned { coords -> cardSize = coords.size },
+                            onClose = closeCard
+                        )
+                    }
+
+                    val viewConfiguration = LocalViewConfiguration.current
+                    var pointerDownOutside by remember(place.id) { mutableStateOf(false) }
+                    var pointerDownPosition by remember(place.id) { mutableStateOf<Offset?>(null) }
+
+                    AnimatedVisibility(
+                        visible = showCard,
+                        enter = fadeIn() + scaleIn(initialScale = 0.95f),
+                        exit = fadeOut() + scaleOut(targetScale = 0.95f)
+                    ) {
+                        val actualSize = cardSize
+                        val cardWidthPx = if (actualSize != IntSize.Zero) actualSize.width.toFloat() else with(density) { PINNED_CARD_ESTIMATED_WIDTH.toPx() }
+                        val cardHeightPx = if (actualSize != IntSize.Zero) actualSize.height.toFloat() else with(density) { PINNED_CARD_ESTIMATED_HEIGHT.toPx() }
+                        val rawX = markerOffset.x - cardWidthPx / 2f
+                        val rawY = markerOffset.y - cardHeightPx - pointerHeightPx
+                        val cardRect = Rect(rawX, rawY, rawX + cardWidthPx, rawY + cardHeightPx)
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInteropFilter { motionEvent ->
+                                    when (motionEvent.actionMasked) {
+                                        MotionEvent.ACTION_DOWN -> {
+                                            val pos = Offset(motionEvent.x, motionEvent.y)
+                                            pointerDownOutside = !cardRect.contains(pos)
+                                            pointerDownPosition = pos
+                                            false
+                                        }
+                                        MotionEvent.ACTION_MOVE -> {
+                                            if (pointerDownOutside) {
+                                                pointerDownPosition?.let { down ->
+                                                    val delta = Offset(motionEvent.x, motionEvent.y) - down
+                                                    if (delta.getDistance() > viewConfiguration.touchSlop) {
+                                                        pointerDownOutside = false
+                                                    }
+                                                }
+                                            }
+                                            false
+                                        }
+                                        MotionEvent.ACTION_UP -> {
+                                            if (pointerDownOutside) {
+                                                val pos = Offset(motionEvent.x, motionEvent.y)
+                                                if (!cardRect.contains(pos)) {
+                                                    closeCard()
+                                                }
+                                            }
+                                            pointerDownOutside = false
+                                            pointerDownPosition = null
+                                            false
+                                        }
+                                        MotionEvent.ACTION_CANCEL -> {
+                                            pointerDownOutside = false
+                                            pointerDownPosition = null
+                                            false
+                                        }
+                                        else -> false
+                                    }
+                                }
+                        ) {
+                            MapPinnedPlaceCard(
+                                place = place,
+                                modifier = Modifier
+                                    .offset { IntOffset(rawX.roundToInt(), rawY.roundToInt()) }
+                                    .onGloballyPositioned { coords -> cardSize = coords.size },
+                                onClose = closeCard
+                            )
+                        }
+                    }
+                }
+            }
 
             if (uiState.isLoading) {
                 LoadingOverlay(modifier = Modifier.fillMaxSize())
@@ -423,8 +538,8 @@ private fun HazardSheetHeader(
     ) {
         Surface(
             shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            color = NightOverlay.copy(alpha = 0.9f),
+            border = BorderStroke(1.dp, SurfaceBorder),
             tonalElevation = 0.dp
         ) {
             Row(
@@ -436,12 +551,12 @@ private fun HazardSheetHeader(
                 Icon(
                     imageVector = Icons.Rounded.WarningAmber,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
+                    tint = AccentPrimary
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = "Radiation feed",
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = TextPrimary,
                         fontWeight = FontWeight.SemiBold
                     )
                     val filteredCount = uiState.searchResults.size
@@ -449,7 +564,7 @@ private fun HazardSheetHeader(
                     val countText = if (total > 0) "$filteredCount / $total" else filteredCount.toString()
                     Text(
                         text = "Signals online: $countText",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = TextSecondary,
                         fontWeight = FontWeight.Medium
                     )
                 }
@@ -460,7 +575,7 @@ private fun HazardSheetHeader(
             TextButton(onClick = onClearFilters) {
                 Text(
                     text = "Reset filters",
-                    color = MaterialTheme.colorScheme.primary,
+                    color = AccentPrimary,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -469,7 +584,7 @@ private fun HazardSheetHeader(
             Icon(
                 imageVector = if (isExpanded) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
                 contentDescription = if (isExpanded) "Collapse sheet" else "Expand sheet",
-                tint = MaterialTheme.colorScheme.primary
+                tint = AccentPrimary
             )
         }
     }
@@ -488,7 +603,7 @@ private fun HazardSheetHandle() {
                 .width(72.dp)
                 .height(8.dp)
                 .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.primary)
+                .background(AccentPrimary.copy(alpha = 0.75f))
         )
     }
 }
@@ -506,6 +621,11 @@ private fun LocationOrientationButton(
         LocationMode.Centered -> Icons.Rounded.GpsFixed
         LocationMode.Oriented -> Icons.Rounded.Navigation
     }
+    val backgroundAlpha = when (mode) {
+        LocationMode.Idle -> 0.85f
+        LocationMode.Centered -> 0.9f
+        LocationMode.Oriented -> 0.95f
+    }
     val contentDescription = when {
         !hasLocationPermission -> "Enable location access"
         mode == LocationMode.Idle -> "Center map on my position"
@@ -513,12 +633,12 @@ private fun LocationOrientationButton(
         else -> "Disable compass mode"
     }
     val iconAlpha = if (!isLocationAvailable && hasLocationPermission && mode != LocationMode.Idle) 0.6f else 1f
-    val iconTint = if (mode == LocationMode.Oriented) MaterialTheme.colorScheme.primary else Color.White
+    val iconTint = if (mode == LocationMode.Oriented) AccentPrimary else Color.White
 
     Surface(
         modifier = modifier.size(52.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        color = NightOverlay.copy(alpha = backgroundAlpha),
         shadowElevation = 12.dp,
         tonalElevation = 0.dp,
         onClick = onClick
@@ -537,6 +657,46 @@ private fun LocationOrientationButton(
 }
 
 @Composable
+private fun MapPinnedPlaceCard(
+    place: Place,
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        PlaceDetailCard(
+            place = place,
+            modifier = Modifier.widthIn(min = 280.dp, max = 360.dp),
+            onClose = onClose
+        )
+        Canvas(
+            modifier = Modifier
+                .size(width = PINNED_CARD_POINTER_WIDTH, height = PINNED_CARD_POINTER_HEIGHT)
+        ) {
+            val triangle = Path().apply {
+                moveTo(0f, 0f)
+                lineTo(size.width / 2f, size.height)
+                lineTo(size.width, 0f)
+                close()
+            }
+            drawPath(path = triangle, color = NightOverlay.copy(alpha = 0.96f))
+            drawPath(
+                path = triangle,
+                color = SurfaceBorder,
+                style = Stroke(width = 1.5.dp.toPx())
+            )
+        }
+    }
+}
+
+private val PINNED_CARD_POINTER_WIDTH = 28.dp
+private val PINNED_CARD_POINTER_HEIGHT = 16.dp
+private val PINNED_CARD_ESTIMATED_WIDTH = 320.dp
+private val PINNED_CARD_ESTIMATED_HEIGHT = 220.dp
+
+@Composable
 private fun HazardPulseIndicator() {
     val transition = rememberInfiniteTransition(label = "hazard-pulse")
     val glowAlpha by transition.animateFloat(
@@ -552,21 +712,61 @@ private fun HazardPulseIndicator() {
         modifier = Modifier
             .size(28.dp)
             .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary),
+            .background(AccentPrimary.copy(alpha = glowAlpha * 0.35f)),
         contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
                 .size(14.dp)
                 .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary)
+                .background(AccentPrimary.copy(alpha = glowAlpha))
         )
     }
 }
 
 @Composable
 private fun HazardBackground() {
-    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // Empty
+    Box(modifier = Modifier.fillMaxSize().background(NightBackground)) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val gridSpacing = 72.dp.toPx()
+            val color = TextMuted.copy(alpha = 0.1f)
+            val strokeWidth = 1.dp.toPx()
+            var x = 0f
+            while (x < size.width) {
+                drawLine(
+                    color = color,
+                    start = Offset(x, 0f),
+                    end = Offset(x, size.height),
+                    strokeWidth = strokeWidth
+                )
+                x += gridSpacing
+            }
+            var y = 0f
+            while (y < size.height) {
+                drawLine(
+                    color = color,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = strokeWidth
+                )
+                y += gridSpacing
+            }
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0x33F5C400), Color.Transparent),
+                    center = Offset(size.width * 0.15f, size.height * 0.1f),
+                    radius = size.minDimension
+                ),
+                size = Size(size.width, size.height)
+            )
+            drawRect(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0x33FF5050), Color.Transparent),
+                    center = Offset(size.width * 0.85f, size.height * 0.12f),
+                    radius = size.minDimension * 0.8f
+                ),
+                size = Size(size.width, size.height)
+            )
+        }
     }
 }

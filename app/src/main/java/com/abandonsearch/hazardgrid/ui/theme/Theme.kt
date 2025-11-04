@@ -1,6 +1,7 @@
 package com.abandonsearch.hazardgrid.ui.theme
 
 import android.app.Activity
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -10,43 +11,35 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Primary,
-    onPrimary = OnPrimary,
-    primaryContainer = PrimaryContainer,
-    onPrimaryContainer = OnPrimaryContainer,
-    secondary = Secondary,
-    onSecondary = OnSecondary,
-    secondaryContainer = SecondaryContainer,
-    onSecondaryContainer = OnSecondaryContainer,
-    tertiary = Tertiary,
-    onTertiary = OnTertiary,
-    tertiaryContainer = TertiaryContainer,
-    onTertiaryContainer = OnTertiaryContainer,
-    error = Error,
-    onError = OnError,
-    errorContainer = ErrorContainer,
-    onErrorContainer = OnErrorContainer,
-    background = Background,
-    onBackground = OnBackground,
-    surface = Surface,
-    onSurface = OnSurface,
-    surfaceVariant = SurfaceVariant,
-    onSurfaceVariant = OnSurfaceVariant,
-    outline = Outline,
-    inverseSurface = InverseSurface,
-    inverseOnSurface = InverseOnSurface,
-    inversePrimary = InversePrimary,
-    surfaceTint = SurfaceTint,
-    outlineVariant = OutlineVariant,
-    scrim = Scrim,
+private val HazardDarkColorScheme = darkColorScheme(
+    primary = AccentPrimary,
+    onPrimary = Color.Black,
+    primaryContainer = Color(0xFF1C1C1C),
+    onPrimaryContainer = AccentPrimary,
+    secondary = AccentStrong,
+    onSecondary = Color.Black,
+    secondaryContainer = Color(0xFF3A1515),
+    onSecondaryContainer = AccentStrong,
+    tertiary = AccentPrimary.copy(alpha = 0.7f),
+    onTertiary = Color.Black,
+    background = NightBackground,
+    onBackground = TextPrimary,
+    surface = NightOverlay,
+    onSurface = TextPrimary,
+    surfaceVariant = NightOverlay,
+    onSurfaceVariant = TextSecondary,
+    outline = SurfaceBorder,
+    outlineVariant = SurfaceBorder.copy(alpha = 0.4f),
+    scrim = Color(0xCC000000),
+    surfaceTint = AccentPrimary,
 )
 
 @Composable
 fun HazardGridTheme(
-    content: @Composable () -> Unit
+    useDarkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
 ) {
-    val colorScheme = DarkColorScheme
+    val colorScheme = HazardDarkColorScheme
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -64,7 +57,7 @@ fun HazardGridTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = HazardTypography,
         content = content
     )
 }

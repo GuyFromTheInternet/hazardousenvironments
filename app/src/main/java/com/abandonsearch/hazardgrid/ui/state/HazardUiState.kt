@@ -17,7 +17,6 @@ data class HazardUiState(
     val activePlaceId: Int? = null,
     val activePlace: Place? = null,
     val totalValid: Int = 0,
-    val webViewUrl: String? = null,
 ) {
     val isReady: Boolean get() = !isLoading && errorMessage == null
     val hasFilters: Boolean get() = filterState.hasActiveFilters()
