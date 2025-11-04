@@ -51,9 +51,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberStandardBottomSheetState
-import androidx.compose.material3.SheetValue
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -284,7 +281,6 @@ fun HazardGridApp() {
                     containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
                     contentColor = MaterialTheme.colorScheme.onSurface,
                     tonalElevation = 14.dp,
-                    shadowElevation = 32.dp,
                 ) {
                     HazardPeninsulaSheet(
                         uiState = uiState,
@@ -316,7 +312,6 @@ fun HazardGridApp() {
                     )
                 }
             }
-        }
         webViewUrl?.let { url ->
             Box(modifier = Modifier.fillMaxSize()) {
                 WebView(url)
@@ -411,13 +406,13 @@ private fun HazardPeninsulaSheet(
             .padding(horizontal = 24.dp, vertical = 20.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
-        HazardSheetHeader(
-            uiState = uiState,
-            isExpanded = isExpanded,
-            onClearFilters = onClearFilters,
-            onToggleExpand = onToggleExpand
-        )
         if (uiState.activePlace != null) {
+            HazardSheetHeader(
+                uiState = uiState,
+                isExpanded = isExpanded,
+                onClearFilters = onClearFilters,
+                onToggleExpand = onToggleExpand
+            )
             PlaceDetailCard(
                 place = uiState.activePlace,
                 onClose = onClose,

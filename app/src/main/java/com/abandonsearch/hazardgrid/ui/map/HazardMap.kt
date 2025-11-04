@@ -146,21 +146,16 @@ private class MarkerController(
 
         for (placeId in existingPlaceIds) {
             markers.remove(placeId)?.let {
-                clusterer.remove(it)
+                clusterer.items.remove(it)
             }
         }
 
         markers[activeId]?.icon = markerFactory.getDrawable(true)
-        pulseActiveMarker(activeId)
         clusterer.invalidate()
     }
 
     fun pulseActiveMarker(activeId: Int?) {
-        val marker = markers[activeId] ?: return
-        val cluster = clusterer.getCluster(marker)
-        if (cluster != null) {
-            cluster.mItems.find { it == marker }?.icon = markerFactory.getDrawable(true)
-        }
+        // Intentionally left for future pulse animation hook
     }
 
     private fun createMarker(mapView: MapView, place: Place): Marker {
