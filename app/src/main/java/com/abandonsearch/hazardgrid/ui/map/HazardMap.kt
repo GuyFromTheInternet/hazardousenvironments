@@ -26,6 +26,8 @@ import org.osmdroid.util.GeoPoint as OsmGeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
+import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
 import java.util.LinkedHashMap
 
 @Composable
@@ -44,6 +46,11 @@ fun HazardMap(
             setMultiTouchControls(true)
             isTilesScaledToDpi = true
             zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+            setMapOrientation(0f, true)
+            setScrollableAreaLimitLatitude(MapView.getTileSystem().getMaxLatitude(), MapView.getTileSystem().getMinLatitude(), 0)
+            setScrollableAreaLimitLongitude(MapView.getTileSystem().getMinLongitude(), MapView.getTileSystem().getMaxLongitude(), 0)
+            tilesOverlay.loadingBackgroundColor = android.graphics.Color.TRANSPARENT
+            tilesOverlay.loadingLineColor = android.graphics.Color.TRANSPARENT
             controller.setZoom(DEFAULT_ZOOM)
             controller.setCenter(OsmGeoPoint(DEFAULT_LAT, DEFAULT_LON))
             minZoomLevel = 4.0
@@ -53,13 +60,17 @@ fun HazardMap(
     val markerClusterer = remember { CustomRadiusMarkerClusterer(context, colorScheme) }
     val markerController = remember { MarkerController(context, markerClusterer) }
     val viewportWatcher = remember { ViewportWatcher(onViewportChanged) }
+    val locationOverlay = remember { MyLocationNewOverlay(GpsMyLocationProvider(context), mapView) }
 
     DisposableEffect(mapView) {
         mapView.onResume()
         mapView.overlays.add(markerClusterer)
+        mapView.overlays.add(locationOverlay)
+        locationOverlay.enableMyLocation()
         viewportWatcher.attach(mapView)
         onDispose {
             viewportWatcher.detach(mapView)
+            locationOverlay.disableMyLocation()
             mapView.onPause()
             mapView.onDetach()
         }
@@ -105,7 +116,7 @@ fun HazardMap(
             viewportWatcher.attach(view)
             markerController.updateMarkers(
                 mapView = view,
-                places = uiState.visibleMarkers,
+                places = uiState.places,
                 activeId = uiState.activePlaceId,
                 onMarkerSelected = onMarkerSelected
             )

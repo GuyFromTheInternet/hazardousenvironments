@@ -46,10 +46,10 @@ fun PlaceDetailCard(
     val context = LocalContext.current
     Surface(
         shape = RoundedCornerShape(28.dp),
-        color = NightOverlay.copy(alpha = 0.96f),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
         tonalElevation = 12.dp,
         shadowElevation = 18.dp,
-        border = BorderStroke(1.dp, SurfaceBorder),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
         modifier = modifier
     ) {
         Column(
@@ -61,13 +61,13 @@ fun PlaceDetailCard(
                     Text(
                         text = place.title.ifBlank { "Unknown site" },
                         style = MaterialTheme.typography.titleLarge,
-                        color = TextPrimary
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     if (place.address.isNotBlank()) {
                         Text(
                             text = place.address,
                             style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -75,7 +75,7 @@ fun PlaceDetailCard(
                     Icon(
                         painter = painterResource(id = R.drawable.hazard_close),
                         contentDescription = "Close detail",
-                        tint = TextMuted
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -83,7 +83,7 @@ fun PlaceDetailCard(
                 Text(
                     text = place.description.trim(),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = TextPrimary
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
             PlaceMetrics(place)
@@ -92,14 +92,14 @@ fun PlaceDetailCard(
                 Text(
                     text = coords ?: "",
                     style = MaterialTheme.typography.labelMedium,
-                    color = TextMuted
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 TextButton(
                     onClick = {
                         coords?.let { clipboard.setText(AnnotatedString(it)) }
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = AccentPrimary)
+                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                 ) {
                     Text("Copy")
                 }
@@ -112,7 +112,7 @@ fun PlaceDetailCard(
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl))
                             context.startActivity(intent)
                         },
-                        colors = ButtonDefaults.textButtonColors(contentColor = AccentPrimary)
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Text("Open maps", fontWeight = FontWeight.SemiBold)
                     }
@@ -121,7 +121,7 @@ fun PlaceDetailCard(
                 if (url.isNotBlank()) {
                     TextButton(
                         onClick = { onOpenIntel(url) },
-                        colors = ButtonDefaults.textButtonColors(contentColor = TextPrimary)
+                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface)
                     ) {
                         Text("Open intel")
                     }

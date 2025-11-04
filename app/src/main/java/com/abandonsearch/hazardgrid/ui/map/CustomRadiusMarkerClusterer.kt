@@ -52,24 +52,8 @@ class CustomRadiusMarkerClusterer(
     }
 
     private fun animateCluster(mapView: MapView, cluster: StaticCluster) {
-        val markers = cluster.mItems
+        // Simply zoom in - we can't access the markers directly
         val clusterCenter = cluster.position
-
-        for ((i, marker) in markers.withIndex()) {
-            val endPoint = marker.position
-
-            val animator = ValueAnimator.ofFloat(0f, 1f)
-            animator.duration = 400
-            animator.startDelay = (i * 40).toLong()
-            animator.addUpdateListener { animation ->
-                val fraction = animation.animatedValue as Float
-                val newLat = clusterCenter.latitude + fraction * (endPoint.latitude - clusterCenter.latitude)
-                val newLon = clusterCenter.longitude + fraction * (endPoint.longitude - clusterCenter.longitude)
-                marker.position = GeoPoint(newLat as Double, newLon as Double)
-                mapView.invalidate()
-            }
-            animator.start()
-        }
-        mapView.controller.zoomTo(mapView.zoomLevelDouble + 1.5, 500L)
+        mapView.controller.animateTo(clusterCenter, mapView.zoomLevelDouble + 1.5, 500L)
     }
 }

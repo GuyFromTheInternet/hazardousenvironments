@@ -155,6 +155,7 @@ fun HazardGridApp() {
 
             LaunchedEffect(Unit) {
                 hasLocationPermission = checkLocationPermission(context)
+                sheetState.show()
             }
 
             LaunchedEffect(hasLocationPermission) {
@@ -272,45 +273,44 @@ fun HazardGridApp() {
                 )
             }
 
-            if (sheetState.isVisible) {
-                ModalBottomSheet(
-                    onDismissRequest = { coroutineScope.launch { sheetState.hide() } },
-                    sheetState = sheetState,
-                    shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-                    dragHandle = { HazardSheetHandle() },
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    tonalElevation = 14.dp,
-                ) {
-                    HazardPeninsulaSheet(
-                        uiState = uiState,
-                        isCompact = isCompact,
-                        isExpanded = sheetState.isVisible,
-                        onSearchChange = viewModel::updateQuery,
-                        onFloorsChange = viewModel::updateFloors,
-                        onSecurityChange = viewModel::updateSecurity,
-                        onInteriorChange = viewModel::updateInterior,
-                        onAgeChange = viewModel::updateAge,
-                        onRatingChange = viewModel::updateRating,
-                        onSortChange = viewModel::updateSort,
-                        onClearFilters = viewModel::clearFilters,
-                        onResultSelected = { placeId ->
-                            viewModel.setActivePlace(placeId, centerOnMap = true)
-                            coroutineScope.launch { sheetState.hide() }
-                        },
-                        onToggleExpand = {
-                            coroutineScope.launch {
-                                if (sheetState.isVisible) {
-                                    sheetState.hide()
-                                } else {
-                                    sheetState.expand()
-                                }
+            ModalBottomSheet(
+                onDismissRequest = { coroutineScope.launch { sheetState.hide() } },
+                sheetState = sheetState,
+                shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+                dragHandle = { HazardSheetHandle() },
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                tonalElevation = 14.dp,
+                scrimColor = Color.Transparent,
+            ) {
+                HazardPeninsulaSheet(
+                    uiState = uiState,
+                    isCompact = isCompact,
+                    isExpanded = sheetState.isVisible,
+                    onSearchChange = viewModel::updateQuery,
+                    onFloorsChange = viewModel::updateFloors,
+                    onSecurityChange = viewModel::updateSecurity,
+                    onInteriorChange = viewModel::updateInterior,
+                    onAgeChange = viewModel::updateAge,
+                    onRatingChange = viewModel::updateRating,
+                    onSortChange = viewModel::updateSort,
+                    onClearFilters = viewModel::clearFilters,
+                    onResultSelected = { placeId ->
+                        viewModel.setActivePlace(placeId, centerOnMap = true)
+                        coroutineScope.launch { sheetState.hide() }
+                    },
+                    onToggleExpand = {
+                        coroutineScope.launch {
+                            if (sheetState.isVisible) {
+                                sheetState.hide()
+                            } else {
+                                sheetState.expand()
                             }
-                        },
-                        onOpenIntel = { webViewUrl = it },
-                        onClose = { viewModel.setActivePlace(null, centerOnMap = false) }
-                    )
-                }
+                        }
+                    },
+                    onOpenIntel = { webViewUrl = it },
+                    onClose = { viewModel.setActivePlace(null, centerOnMap = false) }
+                )
             }
         webViewUrl?.let { url ->
             Box(modifier = Modifier.fillMaxSize()) {
@@ -599,15 +599,15 @@ private fun HazardPulseIndicator() {
 
 @Composable
 private fun HazardBackground() {
+    val gridColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val gridSpacing = 72.dp.toPx()
-            val color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
             val strokeWidth = 1.dp.toPx()
             var x = 0f
             while (x < size.width) {
                 drawLine(
-                    color = color,
+                    color = gridColor,
                     start = Offset(x, 0f),
                     end = Offset(x, size.height),
                     strokeWidth = strokeWidth
@@ -617,7 +617,7 @@ private fun HazardBackground() {
             var y = 0f
             while (y < size.height) {
                 drawLine(
-                    color = color,
+                    color = gridColor,
                     start = Offset(0f, y),
                     end = Offset(size.width, y),
                     strokeWidth = strokeWidth
