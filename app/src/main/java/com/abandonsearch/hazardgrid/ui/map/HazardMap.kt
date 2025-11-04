@@ -131,9 +131,11 @@ fun HazardMap(
 
     androidx.compose.ui.viewinterop.AndroidView(
         modifier = modifier.pointerInput(Unit) {
-            detectTransformGestures { _, pan, _, rotation ->
-                mapView.mapOrientation = mapView.mapOrientation + rotation
-                mapView.scrollBy(pan.x.toInt(), pan.y.toInt())
+            detectTransformGestures { _, pan, zoom, rotation ->
+                if (kotlin.math.abs(zoom - 1f) < 0.05f) {
+                    mapView.mapOrientation = mapView.mapOrientation + rotation
+                }
+                mapView.scrollBy(-pan.x.toInt(), -pan.y.toInt())
             }
         },
         factory = { mapView },
@@ -149,7 +151,6 @@ private class MarkerController(
 ) {
     private val markers = LinkedHashMap<Int, Marker>()
     private val markerFactory = HazardMarkerFactory(context)
-    private var rememberedPlaces: List<Place> = emptyList()
 
     fun updateMarkers(
         mapView: MapView,
@@ -157,19 +158,16 @@ private class MarkerController(
         activeId: Int?,
         onMarkerSelected: (Place?) -> Unit,
     ) {
-        if (rememberedPlaces !== places) {
-            rememberedPlaces = places
-            clusterer.items.clear()
-            markers.clear()
-            places.forEach { place ->
-                val marker = createMarker(mapView, place)
-                marker.setOnMarkerClickListener { _, _ ->
-                    onMarkerSelected(place)
-                    true
-                }
-                markers[place.id] = marker
-                clusterer.add(marker)
+        clusterer.items.clear()
+        markers.clear()
+        places.forEach { place ->
+            val marker = createMarker(mapView, place)
+            marker.setOnMarkerClickListener { _, _ ->
+                onMarkerSelected(place)
+                true
             }
+            markers[place.id] = marker
+            clusterer.add(marker)
         }
         for ((id, marker) in markers) {
             marker.icon = markerFactory.getDrawable(id == activeId)

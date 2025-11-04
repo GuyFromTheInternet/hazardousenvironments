@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 
 class HazardGridViewModel(
     private val repository: PlacesRepository
@@ -34,7 +35,6 @@ class HazardGridViewModel(
 
     private val _mapEvents = MutableSharedFlow<MapCommand>(extraBufferCapacity = 4)
     val mapEvents: SharedFlow<MapCommand> = _mapEvents.asSharedFlow()
-    private var lastRecomputeTimestamp = 0L
 
     init {
         loadPlaces()
@@ -141,10 +141,7 @@ class HazardGridViewModel(
     }
 
     private fun recompute() {
-        val now = System.currentTimeMillis()
-        if (now - lastRecomputeTimestamp < 100L) return
-        lastRecomputeTimestamp = now
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             val snapshot = _uiState.value
             val filtered = PlaceFilters.applyFilters(snapshot.allPlaces, snapshot.filterState)
             val sorted = PlaceFilters.sortPlaces(filtered, snapshot.filterState, snapshot.viewport)
