@@ -141,8 +141,8 @@ fun HazardGridApp() {
         coroutineScope.launch {
             if (isMapDragging) {
                 sheetState.hide()
-            } else if (sheetState.currentValue == SheetValue.PartiallyExpanded) {
-                sheetState.expand()
+            } else {
+                sheetState.partialExpand()
             }
         }
     }
