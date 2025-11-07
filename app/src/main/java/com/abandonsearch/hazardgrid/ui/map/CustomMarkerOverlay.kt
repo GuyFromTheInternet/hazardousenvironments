@@ -9,7 +9,7 @@ import android.graphics.RectF
 import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
-import android.view.animation.BounceInterpolator
+import android.view.animation.OvershootInterpolator
 import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -36,7 +36,7 @@ class CustomMarkerOverlay(
     private val markers = mutableListOf<Marker>()
     private val handler = Handler(Looper.getMainLooper())
     private var activeMarker: Marker? = null
-    private val interpolator = BounceInterpolator()
+    private val interpolator = OvershootInterpolator()
 
     private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
