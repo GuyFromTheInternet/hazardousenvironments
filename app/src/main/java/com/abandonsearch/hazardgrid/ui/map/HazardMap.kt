@@ -72,7 +72,7 @@ fun HazardMap(
     }
     val viewportWatcher = remember { ViewportWatcher(onViewportChanged) }
     val locationOverlay = remember { MyLocationNewOverlay(GpsMyLocationProvider(context), mapView) }
-    val markerOverlay = remember { CustomMarkerOverlay(context, onMarkerSelected) }
+    val markerOverlay = remember { CustomMarkerOverlay(mapView, onMarkerSelected, colorScheme) }
 
     DisposableEffect(mapView) {
         mapView.onResume()
@@ -120,8 +120,8 @@ fun HazardMap(
         }
     }
 
-    LaunchedEffect(uiState.allPlaces, uiState.activePlaceId) {
-        markerOverlay.setPlaces(uiState.allPlaces, uiState.activePlaceId)
+    LaunchedEffect(uiState.allPlaces) {
+        markerOverlay.setPlaces(uiState.allPlaces)
         mapView.invalidate()
     }
 
