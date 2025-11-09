@@ -2,15 +2,12 @@ package com.abandonsearch.hazardgrid.ui.map
 
 import android.os.Handler
 import android.os.Looper
-import android.view.MotionEvent
 import androidx.compose.material3.ColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.view.doOnDetach
 import androidx.compose.ui.viewinterop.AndroidView
@@ -30,19 +27,9 @@ import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint as OsmGeoPoint
 import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
-import org.osmdroid.views.overlay.Overlay
 import org.osmdroid.views.overlay.mylocation.GpsMyLocationProvider
 import org.osmdroid.views.overlay.mylocation.MyLocationNewOverlay
-import java.util.LinkedHashMap
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.input.pointer.pointerInteropFilter
-import kotlin.math.atan2
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HazardMap(
     modifier: Modifier = Modifier,
@@ -50,8 +37,7 @@ fun HazardMap(
     colorScheme: ColorScheme,
     onMarkerSelected: (Place?) -> Unit,
     onViewportChanged: (MapViewport) -> Unit,
-    onDragStart: () -> Unit,
-    onDragEnd: () -> Unit,
+    onMapScrolled: () -> Unit,
     mapEvents: Flow<HazardGridViewModel.MapCommand>,
     mergeShapesEnabled: Boolean,
 ) {
@@ -71,7 +57,7 @@ fun HazardMap(
             maxZoomLevel = 19.0
         }
     }
-    val viewportWatcher = remember { ViewportWatcher(onViewportChanged) }
+    val viewportWatcher = remember { ViewportWatcher(onViewportChanged, onMapScrolled) }
     val locationOverlay = remember { MyLocationNewOverlay(GpsMyLocationProvider(context), mapView) }
     val markerOverlay = remember { CustomMarkerOverlay(mapView, onMarkerSelected, colorScheme) }
 
@@ -130,46 +116,15 @@ fun HazardMap(
         markerOverlay.setMergingEnabled(mergeShapesEnabled)
     }
 
-    var angle by remember { mutableStateOf(0f) }
-    var previousAngle by remember { mutableStateOf(0f) }
     AndroidView(
         factory = { mapView },
-        modifier = modifier.pointerInteropFilter {
-            when (it.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    onDragStart()
-                    previousAngle = 0f
-                    angle = 0f
-                }
-                MotionEvent.ACTION_POINTER_DOWN -> {
-                    previousAngle = 0f
-                    angle = 0f
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    if (it.pointerCount > 1) {
-                        val touch1 = MotionEvent.PointerCoords().also { c -> it.getPointerCoords(0, c) }
-                        val touch2 = MotionEvent.PointerCoords().also { c -> it.getPointerCoords(1, c) }
-                        angle = atan2(touch2.y - touch1.y, touch2.x - touch1.x) * 180 / Math.PI.toFloat()
-                        if (previousAngle != 0f) {
-                            val rotation = angle - previousAngle
-                            mapView.mapOrientation = mapView.mapOrientation + rotation
-                        }
-                        previousAngle = angle
-                    }
-                }
-                MotionEvent.ACTION_UP -> {
-                    onDragEnd()
-                    previousAngle = 0f
-                    angle = 0f
-                }
-            }
-            false
-        }
+        modifier = modifier
     )
 }
 
 private class ViewportWatcher(
     private val onViewportChanged: (MapViewport) -> Unit,
+    private val onMapScrolled: () -> Unit,
 ) : MapListener {
     private val handler = Handler(Looper.getMainLooper())
     private val notifyRunnable = Runnable { dispatchViewport() }
@@ -197,6 +152,7 @@ private class ViewportWatcher(
 
     override fun onScroll(event: ScrollEvent?): Boolean {
         scheduleDispatch()
+        onMapScrolled()
         return false
     }
 

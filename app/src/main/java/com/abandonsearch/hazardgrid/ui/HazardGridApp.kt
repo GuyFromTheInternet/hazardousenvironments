@@ -3,7 +3,6 @@ package com.abandonsearch.hazardgrid.ui
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
-import android.view.MotionEvent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -18,8 +17,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -38,15 +35,12 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -55,6 +49,7 @@ import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.MyLocation
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -82,30 +77,22 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposePath
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.content.ContextCompat
-import androidx.compose.material.icons.rounded.Close
 import androidx.graphics.shapes.Morph
 import androidx.graphics.shapes.toPath
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.abandonsearch.hazardgrid.data.Place
 import com.abandonsearch.hazardgrid.data.settings.MapApp
 import com.abandonsearch.hazardgrid.data.settings.SettingsRepository
 import com.abandonsearch.hazardgrid.data.PlacesRepository
@@ -121,12 +108,6 @@ import com.abandonsearch.hazardgrid.ui.navigation.TRANSITION_DURATION
 import com.abandonsearch.hazardgrid.ui.navigation.enterTransition
 import com.abandonsearch.hazardgrid.ui.navigation.exitTransition
 import com.abandonsearch.hazardgrid.ui.state.HazardUiState
-import com.abandonsearch.hazardgrid.ui.theme.AccentPrimary
-import com.abandonsearch.hazardgrid.ui.theme.NightBackground
-import com.abandonsearch.hazardgrid.ui.theme.NightOverlay
-import com.abandonsearch.hazardgrid.ui.theme.SurfaceBorder
-import com.abandonsearch.hazardgrid.ui.theme.TextPrimary
-import com.abandonsearch.hazardgrid.ui.theme.TextSecondary
 import com.abandonsearch.hazardgrid.ui.settings.SettingsScreen
 import com.abandonsearch.hazardgrid.ui.settings.SettingsViewModel
 import com.abandonsearch.hazardgrid.ui.settings.SettingsViewModelFactory
@@ -135,7 +116,6 @@ import kotlin.math.PI
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -163,23 +143,19 @@ fun HazardGridApp() {
 
     val peekHeight = 140.dp + navBarHeight
 
-    var isMapDragging by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isMapDragging) {
-        coroutineScope.launch {
-            if (isMapDragging) {
-                sheetState.partialExpand()
-            }
+    // Track sheet state
+    val isSheetExpanded by remember {
+        derivedStateOf {
+            sheetState.currentValue == SheetValue.Expanded
         }
     }
 
-    LaunchedEffect(uiState.activePlace, isMapDragging) {
-        coroutineScope.launch {
-            when {
-                isMapDragging -> sheetState.partialExpand()
-                uiState.activePlace != null -> sheetState.expand()
-                else -> sheetState.partialExpand()
-            }
+    // When marker is selected, expand sheet
+    LaunchedEffect(uiState.activePlace) {
+        if (uiState.activePlace != null) {
+            sheetState.expand()
+        } else {
+            sheetState.partialExpand()
         }
     }
 
@@ -234,14 +210,6 @@ fun HazardGridApp() {
             sheetSwipeEnabled = true,
             sheetContent = {
                 BoxWithConstraints(modifier = Modifier.fillMaxHeight(0.75f)) {
-                    val isSheetExpanded by remember {
-                        derivedStateOf {
-                            val current = sheetState.currentValue
-                            val target = sheetState.targetValue
-                            current == SheetValue.Expanded || target == SheetValue.Expanded
-                        }
-                    }
-
                     HazardPeninsulaSheet(
                         uiState = uiState,
                         isCompact = isCompact,
@@ -268,7 +236,9 @@ fun HazardGridApp() {
                             }
                         },
                         onOpenIntel = { webViewUrl = it },
-                        onClose = { viewModel.setActivePlace(null, centerOnMap = false) }
+                        onClose = {
+                            viewModel.setActivePlace(null, centerOnMap = false)
+                        }
                     )
                 }
             }
@@ -283,8 +253,13 @@ fun HazardGridApp() {
                         viewModel.setActivePlace(place?.id, centerOnMap = place != null)
                     },
                     onViewportChanged = viewModel::updateViewport,
-                    onDragStart = { isMapDragging = true },
-                    onDragEnd = { isMapDragging = false },
+                    onMapScrolled = {
+                        if (uiState.activePlace == null) {
+                            coroutineScope.launch {
+                                sheetState.partialExpand()
+                            }
+                        }
+                    },
                     mapEvents = viewModel.mapEvents,
                     mergeShapesEnabled = appSettings.mergeShapesEnabled
                 )
@@ -303,17 +278,13 @@ fun HazardGridApp() {
             }
         }
 
-        // Location button positioned OUTSIDE and ABOVE the BottomSheetScaffold
-        // Dynamically tracks sheet offset
         val buttonBottomPadding = with(density) {
             try {
                 val offsetPx = sheetState.requireOffset()
                 val screenHeightPx = screenHeight.toPx()
-                // Distance from bottom of screen to top of sheet + MUCH MORE spacing
-                (screenHeightPx - offsetPx).toDp() + 100.dp  // Changed from 16.dp to 100.dp
+                (screenHeightPx - offsetPx).toDp() + 100.dp
             } catch (e: Exception) {
-                // Fallback to peek height if offset not available
-                peekHeight + 100.dp  // Changed from 16.dp to 100.dp
+                peekHeight + 100.dp
             }
         }
 
