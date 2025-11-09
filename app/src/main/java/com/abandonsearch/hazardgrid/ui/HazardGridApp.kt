@@ -161,16 +161,32 @@ fun HazardGridApp() {
     var showSettings by remember { mutableStateOf(false) }
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    val peekHeight = 190.dp + navBarHeight
+    val peekHeight = 120.dp + navBarHeight
 
     var isMapDragging by remember { mutableStateOf(false) }
 
-    LaunchedEffect(uiState.activePlace, isMapDragging) {
+    LaunchedEffect(isMapDragging) {
         coroutineScope.launch {
-            when {
-                isMapDragging -> sheetState.partialExpand()
-                uiState.activePlace != null -> sheetState.expand()
-                else -> sheetState.partialExpand()
+            if (isMapDragging) {
+                sheetState.partialExpand()
+            }
+        }
+    }
+
+    LaunchedEffect(isMapDragging) {
+        coroutineScope.launch {
+            if (isMapDragging) {
+                sheetState.partialExpand()
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.activePlace) {
+        coroutineScope.launch {
+            if (uiState.activePlace != null) {
+                sheetState.expand()
+            } else {
+                sheetState.partialExpand()
             }
         }
     }
@@ -249,7 +265,6 @@ fun HazardGridApp() {
                         onClearFilters = viewModel::clearFilters,
                         onResultSelected = { placeId ->
                             viewModel.setActivePlace(placeId, centerOnMap = true)
-                            coroutineScope.launch { sheetState.partialExpand() }
                         },
                         onToggleExpand = {
                             coroutineScope.launch {
