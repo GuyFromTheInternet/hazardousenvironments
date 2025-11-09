@@ -153,7 +153,7 @@ fun HazardGridApp() {
 
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.PartiallyExpanded,
-        skipHiddenState = true
+        skipHiddenState = false
     )
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
     val coroutineScope = rememberCoroutineScope()
@@ -161,13 +161,29 @@ fun HazardGridApp() {
     var showSettings by remember { mutableStateOf(false) }
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    val peekHeight = (screenHeight * 0.10f) + navBarHeight
+    val peekHeight = 190.dp + navBarHeight
 
     var isMapDragging by remember { mutableStateOf(false) }
 
     LaunchedEffect(isMapDragging) {
         coroutineScope.launch {
             if (isMapDragging) {
+                sheetState.hide()
+            } else {
+                if (uiState.activePlace != null) {
+                    sheetState.expand()
+                } else {
+                    sheetState.partialExpand()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.activePlace) {
+        coroutineScope.launch {
+            if (uiState.activePlace != null) {
+                sheetState.expand()
+            } else {
                 sheetState.partialExpand()
             }
         }
@@ -223,7 +239,7 @@ fun HazardGridApp() {
             sheetTonalElevation = 14.dp,
             sheetSwipeEnabled = true,
             sheetContent = {
-                BoxWithConstraints(modifier = Modifier.fillMaxHeight(0.80f)) {
+                BoxWithConstraints(modifier = Modifier.fillMaxHeight(0.75f)) {
                     val isSheetExpanded by remember {
                         derivedStateOf {
                             val current = sheetState.currentValue
