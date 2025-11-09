@@ -53,6 +53,7 @@ fun HazardMap(
     onDragStart: () -> Unit,
     onDragEnd: () -> Unit,
     mapEvents: Flow<HazardGridViewModel.MapCommand>,
+    mergeShapesEnabled: Boolean,
 ) {
     val context = LocalContext.current
     val mapView = remember(context) {
@@ -123,6 +124,10 @@ fun HazardMap(
     LaunchedEffect(uiState.allPlaces) {
         markerOverlay.setPlaces(uiState.allPlaces)
         mapView.invalidate()
+    }
+
+    LaunchedEffect(mergeShapesEnabled) {
+        markerOverlay.setMergingEnabled(mergeShapesEnabled)
     }
 
     var angle by remember { mutableStateOf(0f) }

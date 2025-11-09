@@ -2,6 +2,7 @@ package com.abandonsearch.hazardgrid.ui.components
 
 import android.net.Uri
 import com.abandonsearch.hazardgrid.data.Place
+import com.abandonsearch.hazardgrid.data.settings.MapApp
 
 private const val NO_DATA = "N/A"
 
@@ -24,15 +25,26 @@ fun formatAge(value: Double?): String = formatScale(value)
 
 fun formatRating(value: Double?): String = formatScale(value)
 
-fun buildMapsUrl(place: Place): String? {
+fun buildMapsUrl(place: Place, mapApp: MapApp): String? {
     val lat = place.lat
     val lon = place.lon
     return when {
         lat != null && lon != null -> {
-            "https://yandex.com/maps/?pt=$lon,$lat"
+            when (mapApp) {
+                MapApp.YANDEX -> "https://yandex.com/maps/?pt=$lon,$lat"
+                MapApp.GOOGLE -> "https://www.google.com/maps/search/?api=1&query=$lat,$lon"
+                MapApp.OPEN_STREET_MAP -> "https://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=18/$lat/$lon"
+                MapApp.APPLE -> "https://maps.apple.com/?q=$lat,$lon"
+            }
         }
         place.address.isNotBlank() -> {
-            "https://yandex.com/maps/?text=${Uri.encode(place.address)}"
+            val query = Uri.encode(place.address)
+            when (mapApp) {
+                MapApp.YANDEX -> "https://yandex.com/maps/?text=$query"
+                MapApp.GOOGLE -> "https://www.google.com/maps/search/?api=1&query=$query"
+                MapApp.OPEN_STREET_MAP -> "https://www.openstreetmap.org/search?query=$query"
+                MapApp.APPLE -> "https://maps.apple.com/?q=$query"
+            }
         }
         else -> null
     }

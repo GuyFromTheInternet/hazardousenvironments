@@ -2,6 +2,7 @@ package com.abandonsearch.hazardgrid.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +31,7 @@ import android.net.Uri
 import androidx.compose.foundation.text.selection.SelectionContainer
 import com.abandonsearch.hazardgrid.R
 import com.abandonsearch.hazardgrid.data.Place
+import com.abandonsearch.hazardgrid.data.settings.MapApp
 import com.abandonsearch.hazardgrid.ui.theme.AccentPrimary
 import com.abandonsearch.hazardgrid.ui.theme.NightOverlay
 import com.abandonsearch.hazardgrid.ui.theme.SurfaceBorder
@@ -39,6 +41,7 @@ import com.abandonsearch.hazardgrid.ui.theme.TextPrimary
 @Composable
 fun PlaceDetailCard(
     place: Place,
+    mapApp: MapApp,
     modifier: Modifier = Modifier.fillMaxWidth(),
     onClose: () -> Unit,
     onOpenIntel: (String) -> Unit,
@@ -55,38 +58,41 @@ fun PlaceDetailCard(
             modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    SelectionContainer {
+            Box {
+                SelectionContainer {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(end = 48.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         Text(
                             text = place.title.ifBlank { "Unknown site" },
                             style = MaterialTheme.typography.titleLarge,
                         )
-                    }
-                    if (place.address.isNotBlank()) {
-                        SelectionContainer {
+                        if (place.address.isNotBlank()) {
                             Text(
                                 text = place.address,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        if (place.description.isNotBlank()) {
+                            Text(
+                                text = place.description.trim(),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                     }
                 }
-                IconButton(onClose) {
+                IconButton(
+                    onClick = onClose,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                ) {
                     Icon(
                         painter = painterResource(id = R.drawable.hazard_close),
                         contentDescription = "Close detail",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            if (place.description.isNotBlank()) {
-                SelectionContainer {
-                    Text(
-                        text = place.description.trim(),
-                        style = MaterialTheme.typography.bodyMedium,
                     )
                 }
             }
@@ -114,7 +120,7 @@ fun PlaceDetailCard(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val mapsUrl = buildMapsUrl(place)
+                val mapsUrl = buildMapsUrl(place, mapApp)
                 if (mapsUrl != null) {
                     TextButton(
                         onClick = {

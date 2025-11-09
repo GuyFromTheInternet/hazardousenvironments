@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.abandonsearch.hazardgrid.core.decodeBase64Image
 import com.abandonsearch.hazardgrid.data.Place
+import com.abandonsearch.hazardgrid.data.settings.MapApp
 import com.abandonsearch.hazardgrid.domain.AgeFilter
 import com.abandonsearch.hazardgrid.domain.FloorsFilter
 import com.abandonsearch.hazardgrid.domain.RatingFilter
@@ -75,6 +76,7 @@ fun FilterPanel(
     onRatingChange: (RatingFilter) -> Unit,
     onSortChange: (SortOption) -> Unit,
     onResultSelected: (Int) -> Unit,
+    mapApp: MapApp,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -139,6 +141,7 @@ fun FilterPanel(
                     ResultCard(
                         place = place,
                         isActive = isActive,
+                        mapApp = mapApp,
                         onClick = { onResultSelected(place.id) }
                     )
                 }
@@ -395,6 +398,7 @@ private fun HazardDivider() {
 private fun ResultCard(
     place: Place,
     isActive: Boolean,
+    mapApp: MapApp,
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -465,7 +469,7 @@ private fun ResultCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                val mapsUrl = buildMapsUrl(place)
+                val mapsUrl = buildMapsUrl(place, mapApp)
                 if (mapsUrl != null) {
                     TextButton(
                         onClick = {
