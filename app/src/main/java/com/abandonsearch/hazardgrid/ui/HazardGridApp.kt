@@ -153,7 +153,7 @@ fun HazardGridApp() {
 
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.PartiallyExpanded,
-        skipHiddenState = false
+        skipHiddenState = true
     )
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
     val coroutineScope = rememberCoroutineScope()
@@ -165,26 +165,12 @@ fun HazardGridApp() {
 
     var isMapDragging by remember { mutableStateOf(false) }
 
-    LaunchedEffect(isMapDragging) {
+    LaunchedEffect(uiState.activePlace, isMapDragging) {
         coroutineScope.launch {
-            if (isMapDragging) {
-                sheetState.hide()
-            } else {
-                if (uiState.activePlace != null) {
-                    sheetState.expand()
-                } else {
-                    sheetState.partialExpand()
-                }
-            }
-        }
-    }
-
-    LaunchedEffect(uiState.activePlace) {
-        coroutineScope.launch {
-            if (uiState.activePlace != null) {
-                sheetState.expand()
-            } else {
-                sheetState.partialExpand()
+            when {
+                isMapDragging -> sheetState.partialExpand()
+                uiState.activePlace != null -> sheetState.expand()
+                else -> sheetState.partialExpand()
             }
         }
     }
