@@ -16,14 +16,6 @@ enum class MapApp(
     GOOGLE(
         label = "Google Maps",
         description = "Default option on most Android devices."
-    ),
-    OPEN_STREET_MAP(
-        label = "OpenStreetMap",
-        description = "Community maintained map tiles."
-    ),
-    APPLE(
-        label = "Apple Maps",
-        description = "Use when sharing with iOS users."
     );
 
     companion object {

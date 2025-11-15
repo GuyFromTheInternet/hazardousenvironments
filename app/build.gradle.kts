@@ -11,10 +11,11 @@ android {
 
     defaultConfig {
         applicationId = "com.abandonsearch.hazardgrid"
-        minSdk = 24
+        minSdk = 25
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
+        missingDimensionStrategy("renderer", "opengl")
 
         vectorDrawables {
             useSupportLibrary = true
@@ -82,8 +83,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 
-    implementation("org.osmdroid:osmdroid-android:6.1.18")
-    implementation("com.github.MKergall:osmbonuspack:6.9.0")
+    implementation("org.maplibre.gl:android-sdk:11.9.0")
+    implementation("org.maplibre.gl:android-plugin-annotation-v9:3.0.2")
     implementation("com.google.android.gms:play-services-location:21.3.0")
 
     testImplementation("junit:junit:4.13.2")

@@ -19,7 +19,7 @@ class SettingsRepository(
     val settings: Flow<AppSettings> = dataStore.data.map { preferences ->
         AppSettings(
             defaultMapApp = MapApp.fromName(preferences[Keys.MAP_APP]),
-            mergeShapesEnabled = preferences[Keys.MERGE_SHAPES] ?: true
+            mergeShapesEnabled = preferences[Keys.MERGE_SHAPES] ?: true,
         )
     }
 

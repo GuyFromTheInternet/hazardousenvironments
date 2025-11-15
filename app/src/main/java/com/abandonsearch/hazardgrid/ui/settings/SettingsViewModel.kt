@@ -32,6 +32,7 @@ class SettingsViewModel(
             repository.setMergeShapesEnabled(enabled)
         }
     }
+
 }
 
 class SettingsViewModelFactory(

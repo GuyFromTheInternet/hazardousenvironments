@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
@@ -111,6 +112,8 @@ import com.abandonsearch.hazardgrid.ui.state.HazardUiState
 import com.abandonsearch.hazardgrid.ui.settings.SettingsScreen
 import com.abandonsearch.hazardgrid.ui.settings.SettingsViewModel
 import com.abandonsearch.hazardgrid.ui.settings.SettingsViewModelFactory
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.abs
@@ -141,21 +144,64 @@ fun HazardGridApp() {
     var showSettings by remember { mutableStateOf(false) }
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-    val peekHeight = 140.dp + navBarHeight
+    val basePeekHeight = 140.dp + navBarHeight
+    val maxPeekHeight = screenHeight * 0.75f
+    val loweredPeekTarget = (basePeekHeight - 24.dp).coerceAtLeast(72.dp)
+    val elevatedPeekTarget = (basePeekHeight + screenHeight * 0.2f).coerceAtMost(maxPeekHeight)
+    val isSheetMoving by remember {
+        derivedStateOf { sheetState.targetValue != sheetState.currentValue }
+    }
+    var isMapInteracting by remember { mutableStateOf(false) }
+    var mapDragStartJob by remember { mutableStateOf<Job?>(null) }
+    var mapDragEndJob by remember { mutableStateOf<Job?>(null) }
+    var sheetLowered by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isSheetMoving) {
+        if (isSheetMoving) {
+            sheetLowered = true
+        } else {
+            delay(200)
+            sheetLowered = false
+        }
+    }
+
+    val shouldLowerSheet = sheetLowered || isMapInteracting
+    val peekHeight by animateDpAsState(
+        targetValue = when {
+            shouldLowerSheet -> loweredPeekTarget
+            uiState.activePlace != null -> elevatedPeekTarget
+            else -> basePeekHeight
+        },
+        animationSpec = tween(durationMillis = 140),
+        label = "sheetPeek"
+    )
+
+    val handleMapPanChanged: (Boolean) -> Unit = { isDragging ->
+        if (isDragging) {
+            mapDragEndJob?.cancel()
+            if (!isMapInteracting) {
+                mapDragStartJob?.cancel()
+                mapDragStartJob = coroutineScope.launch {
+                    delay(120)
+                    isMapInteracting = true
+                }
+            }
+        } else {
+            mapDragStartJob?.cancel()
+            if (isMapInteracting) {
+                mapDragEndJob?.cancel()
+                mapDragEndJob = coroutineScope.launch {
+                    delay(200)
+                    isMapInteracting = false
+                }
+            }
+        }
+    }
 
     // Track sheet state
     val isSheetExpanded by remember {
         derivedStateOf {
             sheetState.currentValue == SheetValue.Expanded
-        }
-    }
-
-    // When marker is selected, expand sheet
-    LaunchedEffect(uiState.activePlace) {
-        if (uiState.activePlace != null) {
-            sheetState.expand()
-        } else {
-            sheetState.partialExpand()
         }
     }
 
@@ -249,6 +295,8 @@ fun HazardGridApp() {
                     modifier = Modifier.fillMaxSize(),
                     uiState = uiState,
                     colorScheme = MaterialTheme.colorScheme,
+                    primaryStyleUri = DEFAULT_PRIMARY_STYLE_URI,
+                    fallbackStyleUri = DEFAULT_FALLBACK_STYLE_URI,
                     onMarkerSelected = { place ->
                         viewModel.setActivePlace(place?.id, centerOnMap = place != null)
                     },
@@ -260,6 +308,7 @@ fun HazardGridApp() {
                             }
                         }
                     },
+                    onMapPanChanged = handleMapPanChanged,
                     mapEvents = viewModel.mapEvents,
                     mergeShapesEnabled = appSettings.mergeShapesEnabled
                 )
@@ -392,6 +441,9 @@ private fun bearingDelta(from: Float, to: Float): Float {
 private const val LOCATION_RECENTER_THRESHOLD_METERS = 8.0
 private const val EARTH_RADIUS_METERS = 6_371_000.0
 private const val LOCATION_FOCUS_ZOOM = 17.5
+private const val DEFAULT_PRIMARY_STYLE_URI =
+    "https://api.maptiler.com/maps/019a87ef-2892-72c9-9aea-182dfb03ab3f/style.json?key=rZaJRfHisEbyyIB7N5JS "
+private const val DEFAULT_FALLBACK_STYLE_URI = "https://tiles.openfreemap.org/styles/liberty"
 
 @Composable
 private fun hazardGridViewModel(): HazardGridViewModel {

@@ -19,3 +19,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "AbandonSearchAndroid"
 include(":app")
+
+includeBuild("vendor/maplibre-native/platform/android") {
+    dependencySubstitution {
+        substitute(module("org.maplibre.gl:android-sdk")).using(project(":MapLibreAndroid"))
+    }
+}

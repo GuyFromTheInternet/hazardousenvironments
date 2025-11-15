@@ -33,8 +33,6 @@ fun buildMapsUrl(place: Place, mapApp: MapApp): String? {
             when (mapApp) {
                 MapApp.YANDEX -> "https://yandex.com/maps/?pt=$lon,$lat"
                 MapApp.GOOGLE -> "https://www.google.com/maps/search/?api=1&query=$lat,$lon"
-                MapApp.OPEN_STREET_MAP -> "https://www.openstreetmap.org/?mlat=$lat&mlon=$lon#map=18/$lat/$lon"
-                MapApp.APPLE -> "https://maps.apple.com/?q=$lat,$lon"
             }
         }
         place.address.isNotBlank() -> {
@@ -42,8 +40,6 @@ fun buildMapsUrl(place: Place, mapApp: MapApp): String? {
             when (mapApp) {
                 MapApp.YANDEX -> "https://yandex.com/maps/?text=$query"
                 MapApp.GOOGLE -> "https://www.google.com/maps/search/?api=1&query=$query"
-                MapApp.OPEN_STREET_MAP -> "https://www.openstreetmap.org/search?query=$query"
-                MapApp.APPLE -> "https://maps.apple.com/?q=$query"
             }
         }
         else -> null
