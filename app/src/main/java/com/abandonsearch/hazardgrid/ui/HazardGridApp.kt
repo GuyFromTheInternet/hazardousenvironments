@@ -1,8 +1,10 @@
 package com.abandonsearch.hazardgrid.ui
 
 import android.Manifest
+import android.app.Activity
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.SystemClock
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -57,6 +59,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.BottomSheetScaffold
@@ -66,6 +69,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.SheetValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
@@ -83,6 +87,7 @@ import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
@@ -90,7 +95,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.graphics.shapes.Morph
+import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.toPath
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -121,6 +128,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.random.Random
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -133,15 +141,24 @@ fun HazardGridApp() {
     val isCompact = configuration.screenWidthDp < 900
     val screenHeight = configuration.screenHeightDp.dp
     val density = LocalDensity.current
+    val coroutineScope = rememberCoroutineScope()
+    var webViewUrl by remember { mutableStateOf<String?>(null) }
+    var showSettings by remember { mutableStateOf(false) }
+    val view = LocalView.current
+
+    SideEffect {
+        val window = (view.context as? Activity)?.window ?: return@SideEffect
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        val lightBars = !showSettings
+        controller.isAppearanceLightStatusBars = lightBars
+        controller.isAppearanceLightNavigationBars = lightBars
+    }
 
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.PartiallyExpanded,
         skipHiddenState = true
     )
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
-    val coroutineScope = rememberCoroutineScope()
-    var webViewUrl by remember { mutableStateOf<String?>(null) }
-    var showSettings by remember { mutableStateOf(false) }
     val navBarHeight = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     val basePeekHeight = 140.dp + navBarHeight
@@ -152,7 +169,6 @@ fun HazardGridApp() {
         derivedStateOf { sheetState.targetValue != sheetState.currentValue }
     }
     var isMapInteracting by remember { mutableStateOf(false) }
-    var mapDragStartJob by remember { mutableStateOf<Job?>(null) }
     var mapDragEndJob by remember { mutableStateOf<Job?>(null) }
     var sheetLowered by remember { mutableStateOf(false) }
 
@@ -180,20 +196,13 @@ fun HazardGridApp() {
         if (isDragging) {
             mapDragEndJob?.cancel()
             if (!isMapInteracting) {
-                mapDragStartJob?.cancel()
-                mapDragStartJob = coroutineScope.launch {
-                    delay(120)
-                    isMapInteracting = true
-                }
+                isMapInteracting = true
             }
-        } else {
-            mapDragStartJob?.cancel()
-            if (isMapInteracting) {
-                mapDragEndJob?.cancel()
-                mapDragEndJob = coroutineScope.launch {
-                    delay(200)
-                    isMapInteracting = false
-                }
+        } else if (isMapInteracting) {
+            mapDragEndJob?.cancel()
+            mapDragEndJob = coroutineScope.launch {
+                delay(1300)
+                isMapInteracting = false
             }
         }
     }
@@ -205,7 +214,8 @@ fun HazardGridApp() {
         }
     }
 
-    val sheetBackgroundColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
+    val sheetElevation = 14.dp
+    val sheetBackgroundColor = MaterialTheme.colorScheme.surfaceColorAtElevation(sheetElevation)
 
     val context = LocalContext.current
     val locationPermissions = remember {
@@ -252,7 +262,7 @@ fun HazardGridApp() {
             sheetDragHandle = { HazardSheetHandle() },
             sheetContainerColor = sheetBackgroundColor,
             sheetContentColor = MaterialTheme.colorScheme.onSurface,
-            sheetTonalElevation = 14.dp,
+            sheetTonalElevation = sheetElevation,
             sheetSwipeEnabled = true,
             sheetContent = {
                 BoxWithConstraints(modifier = Modifier.fillMaxHeight(0.75f)) {
@@ -310,7 +320,9 @@ fun HazardGridApp() {
                     },
                     onMapPanChanged = handleMapPanChanged,
                     mapEvents = viewModel.mapEvents,
-                    mergeShapesEnabled = appSettings.mergeShapesEnabled
+                    mergeShapesEnabled = appSettings.mergeShapesEnabled,
+                    userLocation = locationHeadingState.location,
+                    userHeading = locationHeadingState.heading,
                 )
 
                 if (uiState.isLoading) {
@@ -355,7 +367,7 @@ fun HazardGridApp() {
             icon = Icons.Rounded.Settings,
             contentDescription = "Open settings",
             iconTint = MaterialTheme.colorScheme.primary,
-            backgroundColor = sheetBackgroundColor.copy(alpha = 0.9f),
+            backgroundColor = sheetBackgroundColor,
             size = 64.dp,
             onClick = { showSettings = true }
         )
@@ -609,12 +621,12 @@ private fun LocationButton(
     hasLocationPermission: Boolean,
     isLocationAvailable: Boolean,
     onClick: () -> Unit,
-    backgroundColor: Color = MaterialTheme.colorScheme.surfaceContainerLow
+    backgroundColor: Color = MaterialTheme.colorScheme.surface
 ) {
     val contentDescription = if (hasLocationPermission) "Center map on my position" else "Enable location access"
     val iconAlpha = if (!isLocationAvailable && hasLocationPermission) 0.6f else 1f
 
-    val shapes = remember {
+    val shapes: List<RoundedPolygon> = remember {
         listOf(
             MaterialShapes.Circle,
             MaterialShapes.Diamond,
@@ -632,8 +644,13 @@ private fun LocationButton(
         )
     }
 
-    var currentShape by remember { mutableStateOf(shapes.random()) }
-    var targetShape by remember { mutableStateOf(shapes.filter { it != currentShape }.random()) }
+    val randomSeed = remember { Random(SystemClock.uptimeMillis()) }
+    fun pickShape(exclude: RoundedPolygon? = null): RoundedPolygon {
+        val pool = if (exclude == null) shapes else shapes.filter { it != exclude }
+        return pool[randomSeed.nextInt(pool.size)]
+    }
+    var currentShape by remember { mutableStateOf(pickShape()) }
+    var targetShape by remember { mutableStateOf(pickShape(currentShape)) }
     val animationProgress = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
 
@@ -641,26 +658,21 @@ private fun LocationButton(
         modifier = modifier
             .size(88.dp)
             .clip(CircleShape)
-            .shadow(16.dp, CircleShape, clip = false)
-            .background(backgroundColor.copy(alpha = 0.95f))
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
-                shape = CircleShape
-            )
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
-                val nextShape = shapes.filter { it != targetShape }.random()
-                currentShape = targetShape
-                targetShape = nextShape
-
                 scope.launch {
+                    if (animationProgress.isRunning) {
+                        animationProgress.stop()
+                        animationProgress.snapTo(1f)
+                    }
+                    currentShape = targetShape
+                    targetShape = pickShape(currentShape)
                     animationProgress.snapTo(0f)
                     animationProgress.animateTo(
                         targetValue = 1f,
-                        animationSpec = tween(durationMillis = 520, easing = FastOutSlowInEasing)
+                        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing)
                     )
                 }
                 onClick()
@@ -746,7 +758,7 @@ private fun AnimatedActionButton(
             }
             .clip(CircleShape)
             .shadow(16.dp, CircleShape, clip = false)
-            .background(backgroundColor.copy(alpha = 0.95f))
+            .background(backgroundColor)
             .border(
                 width = 1.dp,
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),

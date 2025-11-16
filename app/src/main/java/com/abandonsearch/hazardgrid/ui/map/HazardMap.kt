@@ -8,7 +8,6 @@ import android.graphics.RectF
 import android.os.Bundle
 import android.os.SystemClock
 import android.view.animation.OvershootInterpolator
-import android.util.Log
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -61,8 +60,10 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.Locale
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.absoluteValue
 import kotlin.math.atan
 import kotlin.math.cos
 import kotlin.math.ln
@@ -74,6 +75,7 @@ import kotlin.math.sin
 import kotlin.math.sinh
 import kotlin.random.Random
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun HazardMap(
     modifier: Modifier = Modifier,
@@ -87,6 +89,8 @@ fun HazardMap(
     onMapPanChanged: (Boolean) -> Unit = {},
     mapEvents: Flow<HazardGridViewModel.MapCommand>,
     mergeShapesEnabled: Boolean,
+    userLocation: GeoPoint?,
+    userHeading: Float?,
 ) {
     val context = LocalContext.current
     MapLibre.getInstance(context)
@@ -113,6 +117,41 @@ fun HazardMap(
 
     val markerStates = remember(markerStore.version, uiState.allPlaces) {
         markerStore.statesFor(uiState.allPlaces)
+    }
+
+    @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+    val userMarkerState = remember {
+        MarkerShapeState(
+            initialPlace = createUserPlace(null),
+            initialPolygon = MaterialShapes.Arrow,
+            initialColor = colorScheme.error.toArgb(),
+            initialRotation = 0f,
+        )
+    }
+
+    val userMarkerColor = colorScheme.error.toArgb()
+
+    LaunchedEffect(userLocation, userMarkerColor) {
+        val location = userLocation
+        if (location == null) {
+            if (userMarkerState.hasValidLocation()) {
+                userMarkerState.updatePlace(createUserPlace(null))
+            }
+            return@LaunchedEffect
+        }
+        userMarkerState.updatePlace(createUserPlace(location))
+        userMarkerState.setStaticState(MaterialShapes.Arrow, userMarkerColor, userMarkerState.endRotation)
+    }
+
+    LaunchedEffect(userHeading) {
+        val headingValue = userHeading ?: return@LaunchedEffect
+        if (!userMarkerState.hasValidLocation()) return@LaunchedEffect
+        val normalized = normalizeBearing(headingValue.toDouble()).toFloat()
+        if ((userMarkerState.endRotation - normalized).absoluteValue < 1f &&
+            userMarkerState.endColor == userMarkerColor) {
+            return@LaunchedEffect
+        }
+        userMarkerState.setStaticState(MaterialShapes.Arrow, userMarkerColor, normalized)
     }
 
     val shapeLayer = remember { MorphingShapeLayer() }
@@ -278,7 +317,13 @@ fun HazardMap(
             val frameTimeMs = withFrameNanos { it / 1_000_000 }
         val forceUpload = lastUploadedGeneration != styleGeneration
         val predictionTimeMs = frameTimeMs + FRAME_PREDICTION_MS
-        val buffer = shapeBatchWriter.encode(markerStates, predictionTimeMs, forceUpload = forceUpload)
+        val sortedMarkers = markerStates.sortedBy { if (it.isActive) 1 else 0 }
+        val renderStates = if (userMarkerState.hasValidLocation()) {
+            sortedMarkers + userMarkerState
+        } else {
+            sortedMarkers
+        }
+        val buffer = shapeBatchWriter.encode(renderStates, predictionTimeMs, forceUpload = forceUpload)
             if (buffer != null) {
                 shapeLayer.update(buffer)
                 lastUploadedGeneration = styleGeneration
@@ -309,33 +354,319 @@ private fun findMarkerAt(
             mapSize = mapSize,
             mapProjection = mapProjection,
         ) ?: return@firstOrNull false
-        val radius = if (state.isActive) ACTIVE_MARKER_RADIUS else DEFAULT_MARKER_RADIUS
+        val radius = if (state.isActive) ACTIVE_MARKER_RADIUS else INACTIVE_MARKER_RADIUS
         val dx = point.x - screen.x.toFloat()
         val dy = point.y - screen.y.toFloat()
         dx * dx + dy * dy <= (radius + MARKER_HIT_PADDING) * (radius + MARKER_HIT_PADDING)
     }
 }
 
-private data class GeometrySnapshot(
-    val vertices: FloatArray,
-    val fillColor: Int,
-    val strokeColor: Int,
-    val strokeWidth: Float,
+private data class MarkerKeyframePayload(
+    val vertexCount: Int,
+    val startVertices: FloatArray,
+    val endVertices: FloatArray,
+    val startColor: Int,
+    val endColor: Int,
+    val startStrokeColor: Int,
+    val endStrokeColor: Int,
 )
+
+private fun MarkerKeyframePayload.deepCopy(): MarkerKeyframePayload =
+    MarkerKeyframePayload(
+        vertexCount = vertexCount,
+        startVertices = startVertices.copyOf(),
+        endVertices = endVertices.copyOf(),
+        startColor = startColor,
+        endColor = endColor,
+        startStrokeColor = startStrokeColor,
+        endStrokeColor = endStrokeColor,
+    )
+
+private enum class KeyframeReason {
+    None,
+    Morph,
+    Selection,
+    Full,
+}
+
+private class PolygonSampler {
+    private val path = Path()
+    private val bounds = RectF()
+    private val targetBounds = RectF()
+    private val scaleMatrix = Matrix()
+    private val rotationMatrix = Matrix()
+    private val measure = PathMeasure()
+    private val coords = FloatArray(2)
+
+    fun sample(
+        morph: Morph,
+        progress: Float,
+        rotation: Float,
+        radius: Float,
+        markerId: Int,
+        phase: String,
+        forcedVertexCount: Int? = null,
+    ): FloatArray? {
+        path.rewind()
+        morph.toPath(progress, path)
+        path.computeBounds(bounds, true)
+        targetBounds.set(-radius, -radius, radius, radius)
+        scaleMatrix.reset()
+        scaleMatrix.setRectToRect(bounds, targetBounds, Matrix.ScaleToFit.CENTER)
+        path.transform(scaleMatrix)
+        rotationMatrix.reset()
+        rotationMatrix.postRotate(rotation)
+        path.transform(rotationMatrix)
+        measure.setPath(path, true)
+        val totalLength = measure.length
+        if (totalLength <= 0f) {
+            return null
+        }
+        val vertexCount = forcedVertexCount ?: maxOf(
+            MIN_VERTEX_COUNT,
+            (totalLength / SAMPLE_STEP).roundToInt(),
+        )
+        if (vertexCount < 3) {
+            return null
+        }
+        val result = FloatArray(vertexCount * 2)
+        val step = totalLength / vertexCount
+        var distance = 0f
+        for (i in 0 until vertexCount) {
+            if (!measure.getPosTan(distance.coerceAtMost(totalLength), coords, null)) {
+                return null
+            }
+            val idx = i * 2
+            result[idx] = coords[0]
+            result[idx + 1] = coords[1]
+            distance += step
+        }
+        return result
+    }
+
+    companion object {
+        private const val SAMPLE_STEP = 6f
+        private const val MIN_VERTEX_COUNT = 24
+    }
+}
+
+private fun FloatArray.resampleClosedPolygon(targetCount: Int): FloatArray? {
+    val pointCount = size / 2
+    if (pointCount < 3 || targetCount < 3) return null
+    val cumulative = FloatArray(pointCount + 1)
+    var perimeter = 0f
+    for (i in 0 until pointCount) {
+        val next = (i + 1) % pointCount
+        val x0 = this[i * 2]
+        val y0 = this[i * 2 + 1]
+        val x1 = this[next * 2]
+        val y1 = this[next * 2 + 1]
+        val dx = x1 - x0
+        val dy = y1 - y0
+        perimeter += kotlin.math.sqrt(dx * dx + dy * dy)
+        cumulative[i + 1] = perimeter
+    }
+    if (perimeter <= 0f) return null
+    val step = perimeter / targetCount
+    val result = FloatArray(targetCount * 2)
+    var distance = 0f
+    for (i in 0 until targetCount) {
+        val target = distance % perimeter
+        var edgeIndex = 0
+        while (edgeIndex < pointCount && target > cumulative[edgeIndex + 1]) {
+            edgeIndex++
+        }
+        val startDist = cumulative[edgeIndex]
+        val endDist = cumulative[(edgeIndex + 1) % (pointCount + 1)]
+        val idxA = (edgeIndex % pointCount) * 2
+        val idxB = ((edgeIndex + 1) % pointCount) * 2
+        val ax = this[idxA]
+        val ay = this[idxA + 1]
+        val bx = this[idxB]
+        val by = this[idxB + 1]
+        val segmentLength = if (endDist >= startDist) endDist - startDist else perimeter - startDist + endDist
+        val localTarget = if (target >= startDist) target - startDist else perimeter - startDist + target
+        val t = if (segmentLength == 0f) 0f else (localTarget / segmentLength).coerceIn(0f, 1f)
+        result[i * 2] = ax + (bx - ax) * t
+        result[i * 2 + 1] = ay + (by - ay) * t
+        distance += step
+    }
+    return result
+}
+
+private data class PolygonBounds(
+    val count: Int,
+    val minX: Float,
+    val maxX: Float,
+    val minY: Float,
+    val maxY: Float,
+    val minRadius: Float,
+    val maxRadius: Float,
+) {
+    private val spanX: Float get() = maxX - minX
+    private val spanY: Float get() = maxY - minY
+
+    fun isSuspicious(threshold: Float = SUSPICIOUS_RADIUS_THRESHOLD): Boolean {
+        if (count <= 0) return true
+        return minRadius < threshold || spanX < threshold || spanY < threshold
+    }
+
+    fun describe(): String =
+        String.format(
+            Locale.US,
+            "count=%d x=[%.3f, %.3f] y=[%.3f, %.3f] r=[%.3f, %.3f]",
+            count,
+            minX.toDouble(),
+            maxX.toDouble(),
+            minY.toDouble(),
+            maxY.toDouble(),
+            minRadius.toDouble(),
+            maxRadius.toDouble(),
+        )
+}
+
+private fun FloatArray.boundsSnapshot(): PolygonBounds? {
+    if (isEmpty()) return null
+    val pointCount = size / 2
+    if (pointCount <= 0) return null
+    var minX = Float.POSITIVE_INFINITY
+    var maxX = Float.NEGATIVE_INFINITY
+    var minY = Float.POSITIVE_INFINITY
+    var maxY = Float.NEGATIVE_INFINITY
+    var minRadius = Float.POSITIVE_INFINITY
+    var maxRadius = Float.NEGATIVE_INFINITY
+    for (i in 0 until pointCount) {
+        val x = this[i * 2]
+        val y = this[i * 2 + 1]
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+        val radius = kotlin.math.sqrt((x * x + y * y).toDouble()).toFloat()
+        if (radius < minRadius) minRadius = radius
+        if (radius > maxRadius) maxRadius = radius
+    }
+    return PolygonBounds(
+        count = pointCount,
+        minX = minX,
+        maxX = maxX,
+        minY = minY,
+        maxY = maxY,
+        minRadius = minRadius,
+        maxRadius = maxRadius,
+    )
+}
+
+private fun FloatArray.describeVertices(limit: Int = 3): String {
+    if (isEmpty()) return "[]"
+    val pairCount = size / 2
+    val maxPairs = min(limit, pairCount)
+    val builder = StringBuilder("[")
+    for (i in 0 until maxPairs) {
+        if (i > 0) builder.append(", ")
+        val x = this[i * 2]
+        val y = this[i * 2 + 1]
+        builder.append(
+            String.format(
+                Locale.US,
+                "(%.2f, %.2f)",
+                x.toDouble(),
+                y.toDouble(),
+            )
+        )
+    }
+    if (pairCount > maxPairs) builder.append(", ...")
+    builder.append(']')
+    return builder.toString()
+}
+
+private fun FloatArray.hasInvalidValues(): Boolean =
+    any { it.isNaN() || it.isInfinite() }
+
+private fun FloatArray.alignToReference(reference: FloatArray): FloatArray {
+    val count = size / 2
+    if (reference.size != size || count < 3) return this
+    var bestOffset = 0
+    var bestReversed = false
+    var bestScore = Double.POSITIVE_INFINITY
+
+    fun score(offset: Int, reversed: Boolean): Double {
+        var sum = 0.0
+        for (i in 0 until count) {
+            val refIndex = i * 2
+            val candidatePosition = if (!reversed) {
+                (i + offset) % count
+            } else {
+                val value = count + offset - i
+                ((value % count) + count) % count
+            }
+            val candIndex = candidatePosition * 2
+            val dx = reference[refIndex] - this[candIndex]
+            val dy = reference[refIndex + 1] - this[candIndex + 1]
+            sum += dx * dx + dy * dy
+            if (sum >= bestScore) return sum
+        }
+        return sum
+    }
+
+    for (offset in 0 until count) {
+        val forwardScore = score(offset, false)
+        if (forwardScore < bestScore) {
+            bestScore = forwardScore
+            bestOffset = offset
+            bestReversed = false
+        }
+        val reverseScore = score(offset, true)
+        if (reverseScore < bestScore) {
+            bestScore = reverseScore
+            bestOffset = offset
+            bestReversed = true
+        }
+    }
+    if (bestOffset == 0 && !bestReversed) return this
+    val aligned = FloatArray(size)
+    for (i in 0 until count) {
+        val sourcePosition = if (!bestReversed) {
+            (i + bestOffset) % count
+        } else {
+            val value = count + bestOffset - i
+            ((value % count) + count) % count
+        }
+        val srcIndex = sourcePosition * 2
+        val destIndex = i * 2
+        aligned[destIndex] = this[srcIndex]
+        aligned[destIndex + 1] = this[srcIndex + 1]
+    }
+    return aligned
+}
+
+private fun describeShape(shape: RoundedPolygon): String {
+    val index = shapeCatalog.indexOf(shape)
+    return if (index >= 0) {
+        "shape#$index"
+    } else {
+        "shape#${shape.hashCode().toUInt().toString(16)}"
+    }
+}
+
+private fun Int.isUserMarkerId(): Boolean = this == USER_PLACE_ID
+
+private fun Int.toDebugColor(): String =
+    "0x" + toUInt().toString(16).padStart(8, '0')
 
 private class NativeShapeBatchWriter {
     private var buffer: ByteBuffer = ByteBuffer.allocateDirect(DEFAULT_CAPACITY).order(ByteOrder.LITTLE_ENDIAN)
-    private val path = Path()
-    private val bounds = RectF()
-    private val scaleMatrix = Matrix()
-    private val rotationMatrix = Matrix()
+    private val sampler = PolygonSampler()
+    private var lastMarkerCount: Int = -1
 
     fun encode(
         markerStates: List<MarkerShapeState>,
         frameTimeMs: Long,
         forceUpload: Boolean = false,
     ): ByteBuffer? {
-        val needsUpload = forceUpload || markerStates.any { it.geometryDirty || it.isAnimating }
+        markerStates.forEach { it.updateAnimationState(frameTimeMs) }
+        val markerCountChanged = markerStates.size != lastMarkerCount
+        val needsUpload = forceUpload || markerCountChanged || markerStates.any { it.geometryDirty }
         if (!needsUpload) {
             return null
         }
@@ -344,31 +675,39 @@ private class NativeShapeBatchWriter {
         buffer.putInt(0) // placeholder for count
         var written = 0
         markerStates.forEach { state ->
-            val lat = state.place.lat ?: return@forEach
-            val lon = state.place.lon ?: return@forEach
-            val geometry = state.buildGeometrySnapshot(
-                frameTimeMs = frameTimeMs,
-                reusablePath = path,
-                bounds = bounds,
-                scaleMatrix = scaleMatrix,
-                rotationMatrix = rotationMatrix,
-            ) ?: return@forEach
-            val vertexCount = geometry.vertices.size / 2
-            if (vertexCount < 3) return@forEach
-            val bytesNeeded =
-                HEADER_BYTES + geometry.vertices.size * java.lang.Float.BYTES
+            val lat = state.place.lat
+            val lon = state.place.lon
+            if (lat == null || lon == null) {
+                return@forEach
+            }
+            val payload = state.ensureKeyframePayload(frameTimeMs, sampler) ?: return@forEach
+            if (payload.vertexCount < 3) return@forEach
+            val bytesNeeded = HEADER_BYTES +
+                COLOR_BYTES * 4 +
+                payload.vertexCount * 2 * java.lang.Float.BYTES * 2
             ensureCapacity(bytesNeeded)
+            val animationStart = state.animationStartTimestamp()
+            val animationDuration = state.animationDuration()
+            val uploadAnimationStart = animationStart
             buffer.putInt(state.id)
             buffer.putDouble(lat)
             buffer.putDouble(lon)
-            buffer.putInt(geometry.fillColor)
-            buffer.putInt(geometry.strokeColor)
-            buffer.putFloat(geometry.strokeWidth)
-            buffer.putInt(vertexCount)
-            geometry.vertices.forEach { buffer.putFloat(it) }
+            buffer.putFloat(state.strokeWidth())
+            buffer.putInt(payload.vertexCount)
+            buffer.putLong(uploadAnimationStart)
+            buffer.putLong(animationDuration)
+            buffer.putInt(EASING_OVERSHOOT)
+            buffer.putInt(if (state.isActive) 1 else 0)
+            buffer.putInt(payload.startColor)
+            buffer.putInt(payload.endColor)
+            buffer.putInt(payload.startStrokeColor)
+            buffer.putInt(payload.endStrokeColor)
+            payload.startVertices.forEach { buffer.putFloat(it) }
+            payload.endVertices.forEach { buffer.putFloat(it) }
             written++
         }
         buffer.putInt(0, written)
+        lastMarkerCount = markerStates.size
         buffer.flip()
         return buffer
     }
@@ -389,117 +728,15 @@ private class NativeShapeBatchWriter {
     companion object {
         private const val DEFAULT_CAPACITY = 64 * 1024
         private const val HEADER_BYTES =
-            Int.SIZE_BYTES + java.lang.Double.BYTES * 2 + Int.SIZE_BYTES * 4 + java.lang.Float.BYTES
+            Int.SIZE_BYTES +
+                java.lang.Double.BYTES * 2 +
+                java.lang.Float.BYTES +
+                Int.SIZE_BYTES +
+                java.lang.Long.BYTES * 2 +
+                Int.SIZE_BYTES * 2
+        private const val COLOR_BYTES = Int.SIZE_BYTES
+        private const val EASING_OVERSHOOT = 1
     }
-}
-
-private fun MarkerShapeState.buildGeometrySnapshot(
-    frameTimeMs: Long,
-    reusablePath: Path,
-    bounds: RectF,
-    scaleMatrix: Matrix,
-    rotationMatrix: Matrix,
-): GeometrySnapshot? {
-    val progress = animationProgress(frameTimeMs)
-    val eased = MARKER_INTERPOLATOR.getInterpolation(progress)
-    val radius = currentRadius(frameTimeMs)
-
-    if (!isAnimating && !geometryDirty) {
-        cachedSnapshot?.let { return it }
-    }
-
-    reusablePath.rewind()
-    val morph = Morph(startPolygon, endPolygon)
-    morph.toPath(eased, reusablePath)
-
-    reusablePath.computeBounds(bounds, true)
-    scaleMatrix.reset()
-    scaleMatrix.setRectToRect(
-        bounds,
-        RectF(-radius, -radius, radius, radius),
-        Matrix.ScaleToFit.CENTER,
-    )
-    reusablePath.transform(scaleMatrix)
-
-    rotationMatrix.reset()
-    rotationMatrix.postRotate(currentRotation(eased))
-    reusablePath.transform(rotationMatrix)
-
-    val vertices = reusablePath.toPolygonVertices() ?: return null
-
-    if (progress >= 1f && isAnimating) {
-        completeAnimation()
-    }
-
-    val fillColor = interpolateColor(eased)
-    val strokeColor = Color(fillColor).copy(alpha = if (isActive) 0.45f else 0.35f).toArgb()
-    val strokeWidth = if (isActive) ACTIVE_BORDER_WIDTH else DEFAULT_BORDER_WIDTH
-
-    val snapshot = GeometrySnapshot(
-        vertices = vertices,
-        fillColor = fillColor,
-        strokeColor = strokeColor,
-        strokeWidth = strokeWidth,
-    )
-    if (isAnimating || isSelectionAnimating()) {
-        geometryDirty = true
-        cachedSnapshot = null
-    } else {
-        geometryDirty = false
-        cachedSnapshot = snapshot
-    }
-    return snapshot
-}
-
-private fun Path.toPolygonVertices(sampleStep: Float = 6f): FloatArray? {
-    val measure = PathMeasure(this, true)
-    val points = ArrayList<Float>()
-    val coords = FloatArray(2)
-    var contourIndex = 0
-    while (true) {
-        val length = measure.length
-        if (length > 0f) {
-            val steps = maxOf(4, (length / sampleStep).roundToInt())
-            for (i in 0..steps) {
-                val distance = length * (i / steps.toFloat())
-                if (measure.getPosTan(distance, coords, null)) {
-                    appendPoint(points, coords[0], coords[1])
-                }
-            }
-        }
-        contourIndex++
-        if (!measure.nextContour()) break
-    }
-    if (points.size < 6) return null
-    val firstX = points[0]
-    val firstY = points[1]
-    val lastIndex = points.size - 2
-    val lastX = points[lastIndex]
-    val lastY = points[lastIndex + 1]
-    if (kotlin.math.abs(lastX - firstX) < 0.1f && kotlin.math.abs(lastY - firstY) < 0.1f) {
-        points.removeAt(points.lastIndex)
-        points.removeAt(points.lastIndex)
-    }
-    val result = FloatArray(points.size)
-    for (i in points.indices) {
-        result[i] = points[i]
-    }
-    return result
-}
-
-private fun appendPoint(dest: MutableList<Float>, x: Float, y: Float, threshold: Float = 0.1f) {
-    if (dest.isEmpty()) {
-        dest.add(x)
-        dest.add(y)
-        return
-    }
-    val lastX = dest[dest.size - 2]
-    val lastY = dest.last()
-    if (kotlin.math.abs(x - lastX) < threshold && kotlin.math.abs(y - lastY) < threshold) {
-        return
-    }
-    dest.add(x)
-    dest.add(y)
 }
 
 private class MarkerStyleStore(
@@ -534,7 +771,7 @@ private class MarkerStyleStore(
                 val rotation = random.nextInt(360).toFloat()
                 states[id] = MarkerShapeState(place, shape, color, rotation)
             } else {
-                state.place = place
+                state.updatePlace(place)
             }
         }
         val iterator = states.iterator()
@@ -567,10 +804,6 @@ private class MarkerStyleStore(
         val nextShape = randomDifferentShape(state.endPolygon)
         val nextColor = randomDifferentColor(state.endColor)
         val nextRotation = random.nextInt(360).toFloat()
-        Log.d(
-            "MarkerStyleStore",
-            "triggerMorph id=$id shape=$nextShape color=${nextColor.toUInt().toString(16)} rotation=$nextRotation force=$force"
-        )
         state.prepareForAnimation(nextShape, nextColor, nextRotation)
         bump()
     }
@@ -612,12 +845,13 @@ private class MarkerStyleStore(
 }
 
 private class MarkerShapeState(
-    place: Place,
+    initialPlace: Place,
     initialPolygon: RoundedPolygon,
     initialColor: Int,
     initialRotation: Float,
-) {
-    var place: Place = place
+        ) {
+    var place: Place = initialPlace
+        private set
     var startPolygon: RoundedPolygon = initialPolygon
     var endPolygon: RoundedPolygon = initialPolygon
     var startColor: Int = initialColor
@@ -628,12 +862,23 @@ private class MarkerShapeState(
     var animationStartTime: Long = 0L
     var isActive: Boolean = false
     private var selectionAnimStart: Long = 0L
-    private var selectionAnimFrom: Float = DEFAULT_MARKER_RADIUS
-    private var selectionAnimTo: Float = DEFAULT_MARKER_RADIUS
-    var cachedSnapshot: GeometrySnapshot? = null
+    private var selectionAnimFrom: Float = INACTIVE_MARKER_RADIUS
+    private var selectionAnimTo: Float = INACTIVE_MARKER_RADIUS
+    private var selectionActiveFromState: Boolean = false
+    private var selectionActiveToState: Boolean = false
+    private var cachedKeyframe: MarkerKeyframePayload? = null
+    private var lastKeyframe: MarkerKeyframePayload? = null
     var geometryDirty: Boolean = true
+        private set
+    private var dirtyReason: KeyframeReason = KeyframeReason.Full
 
     val id: Int get() = place.id
+    fun updatePlace(next: Place) {
+        if (place.lat != next.lat || place.lon != next.lon) {
+            markDirty(KeyframeReason.Full)
+        }
+        place = next
+    }
 
     fun animationProgress(now: Long): Float {
         if (!isAnimating) return 1f
@@ -646,7 +891,6 @@ private class MarkerShapeState(
         startColor = endColor
         startRotation = endRotation
         isAnimating = false
-        invalidateGeometryCache()
     }
 
     fun currentRotation(progress: Float): Float =
@@ -670,6 +914,9 @@ private class MarkerShapeState(
         return (a shl 24) or (r shl 16) or (g shl 8) or b
     }
 
+private fun strokeColorFor(activeState: Boolean): Int =
+    Color.Black.copy(alpha = if (activeState) 0.85f else 0.65f).toArgb()
+
     fun prepareForAnimation(
         nextPolygon: RoundedPolygon,
         nextColor: Int,
@@ -678,38 +925,56 @@ private class MarkerShapeState(
         if (isAnimating) {
             completeAnimation()
         }
-        Log.d(
-            "MarkerShapeState",
-            "prepareForAnimation id=$id nextShape=$nextPolygon color=${nextColor.toUInt().toString(16)} rotation=$nextRotation"
-        )
         endPolygon = nextPolygon
         endColor = nextColor
         endRotation = nextRotation
         animationStartTime = SystemClock.uptimeMillis()
         isAnimating = true
-        invalidateGeometryCache()
+        markDirty(KeyframeReason.Morph)
     }
 
     fun setActive(active: Boolean): Boolean {
         if (isActive == active) return false
         val now = SystemClock.uptimeMillis()
         val currentRadius = currentRadius(now)
+        val previousActive = isActive
         isActive = active
         selectionAnimStart = now
         selectionAnimFrom = currentRadius
-        selectionAnimTo = if (active) ACTIVE_MARKER_RADIUS else DEFAULT_MARKER_RADIUS
-        invalidateGeometryCache()
+        selectionAnimTo = if (active) ACTIVE_MARKER_RADIUS else INACTIVE_MARKER_RADIUS
+        selectionActiveFromState = previousActive
+        selectionActiveToState = active
+        markDirty(KeyframeReason.Selection)
         return true
     }
 
-    private fun invalidateGeometryCache() {
+    fun setStaticState(
+        polygon: RoundedPolygon,
+        color: Int,
+        rotation: Float,
+    ) {
+        startPolygon = polygon
+        endPolygon = polygon
+        startColor = color
+        endColor = color
+        startRotation = rotation
+        endRotation = rotation
+        isAnimating = false
+        selectionAnimStart = 0L
+        selectionAnimFrom = if (isActive) ACTIVE_MARKER_RADIUS else INACTIVE_MARKER_RADIUS
+        selectionAnimTo = selectionAnimFrom
+        markDirty(KeyframeReason.Full)
+    }
+
+    private fun markDirty(reason: KeyframeReason) {
         geometryDirty = true
-        cachedSnapshot = null
+        dirtyReason = reason
+        cachedKeyframe = null
     }
 
     fun currentRadius(now: Long): Float {
         if (selectionAnimStart == 0L) {
-            return if (isActive) ACTIVE_MARKER_RADIUS else DEFAULT_MARKER_RADIUS
+            return if (isActive) ACTIVE_MARKER_RADIUS else INACTIVE_MARKER_RADIUS
         }
         val elapsed = (now - selectionAnimStart).coerceAtLeast(0L)
         if (elapsed >= MARKER_SELECTION_DURATION) {
@@ -722,7 +987,179 @@ private class MarkerShapeState(
         return selectionAnimFrom + (selectionAnimTo - selectionAnimFrom) * eased
     }
 
-    fun isSelectionAnimating(): Boolean = selectionAnimStart != 0L
+    fun ensureKeyframePayload(frameTimeMs: Long, sampler: PolygonSampler): MarkerKeyframePayload? {
+        if (!geometryDirty) {
+            return cachedKeyframe
+        }
+        val morph = Morph(startPolygon, endPolygon)
+        val startProgress = when (dirtyReason) {
+            KeyframeReason.Selection -> animationProgress(frameTimeMs)
+            else -> 0f
+        }.coerceIn(0f, 1f)
+        val endProgress = if (isAnimating) 1f else startProgress
+        val easedStart = MARKER_INTERPOLATOR.getInterpolation(startProgress)
+        val easedEnd = MARKER_INTERPOLATOR.getInterpolation(endProgress)
+        val startRotationValue = currentRotation(easedStart)
+        val endRotationValue = currentRotation(easedEnd)
+        val startRadiusValue = startRadius()
+        val endRadiusValue = endRadius()
+        val previousFrame = lastKeyframe
+        val startActiveFlag = when (dirtyReason) {
+            KeyframeReason.Selection -> selectionActiveFromState
+            else -> isActive
+        }
+        val reuseLastGeometry = dirtyReason != KeyframeReason.Morph && previousFrame != null
+        val startVerticesBase: FloatArray
+        var startFillColor = interpolateColor(easedStart)
+        var startStrokeColorValue = strokeColorFor(startActiveFlag)
+        if (reuseLastGeometry && previousFrame != null) {
+            startVerticesBase = previousFrame.endVertices.copyOf()
+            startFillColor = previousFrame.endColor
+            startStrokeColorValue = previousFrame.endStrokeColor
+        } else {
+            startVerticesBase = sampler.sample(
+                morph = morph,
+                progress = easedStart,
+                rotation = startRotationValue,
+                radius = startRadiusValue,
+                markerId = id,
+                phase = "start-base",
+            ) ?: return null
+        }
+        val endVerticesInitial = sampler.sample(
+            morph = morph,
+            progress = easedEnd,
+            rotation = endRotationValue,
+            radius = endRadiusValue,
+            markerId = id,
+            phase = "end-base",
+        ) ?: return null
+        val startCount = startVerticesBase.size / 2
+        val endCount = endVerticesInitial.size / 2
+        val targetCount = max(startCount, endCount)
+        var startSource = "base($startCount)"
+        val finalStartVertices = when {
+            startCount == targetCount -> startVerticesBase
+            reuseLastGeometry -> {
+                var fallbackUsed = false
+                val normalized = startVerticesBase.resampleClosedPolygon(targetCount) ?: run {
+                    fallbackUsed = true
+                    sampler.sample(
+                        morph = morph,
+                        progress = easedStart,
+                        rotation = startRotationValue,
+                        radius = startRadiusValue,
+                        markerId = id,
+                        phase = "start-resample-fallback",
+                        forcedVertexCount = targetCount,
+                    ) ?: return null
+                }
+                startSource = if (fallbackUsed) {
+                    "cached-fallback($startCount->$targetCount)"
+                } else {
+                    "cached-resample($startCount->$targetCount)"
+                }
+                normalized
+            }
+            else -> {
+                startSource = "sampled($startCount->$targetCount)"
+                sampler.sample(
+                    morph = morph,
+                    progress = easedStart,
+                    rotation = startRotationValue,
+                    radius = startRadiusValue,
+                    markerId = id,
+                    phase = "start-resample",
+                    forcedVertexCount = targetCount,
+                ) ?: return null
+            }
+        }
+        val rawEndVertices: FloatArray
+        val endSource: String
+        if (endCount == targetCount) {
+            rawEndVertices = endVerticesInitial
+            endSource = "base($endCount)"
+        } else {
+            endSource = "sampled($endCount->$targetCount)"
+            rawEndVertices = sampler.sample(
+                morph = morph,
+                progress = easedEnd,
+                rotation = endRotationValue,
+                radius = endRadiusValue,
+                markerId = id,
+                phase = "end-resample",
+                forcedVertexCount = targetCount,
+            ) ?: return null
+        }
+        val finalEndVertices = if (rawEndVertices.size == finalStartVertices.size) {
+            rawEndVertices.alignToReference(finalStartVertices)
+        } else {
+            rawEndVertices
+        }
+        val endFillColor = interpolateColor(easedEnd)
+        val startActive = startActiveFlag
+        val endActive = when (dirtyReason) {
+            KeyframeReason.Selection -> selectionActiveToState
+            else -> isActive
+        }
+        val endStrokeColorValue = strokeColorFor(endActive)
+        val payload = MarkerKeyframePayload(
+            vertexCount = targetCount,
+            startVertices = finalStartVertices,
+            endVertices = finalEndVertices,
+            startColor = startFillColor,
+            endColor = endFillColor,
+            startStrokeColor = startStrokeColorValue,
+            endStrokeColor = endStrokeColorValue,
+        )
+        cachedKeyframe = payload
+        lastKeyframe = payload.deepCopy()
+        geometryDirty = false
+        dirtyReason = KeyframeReason.None
+        selectionActiveFromState = isActive
+        selectionActiveToState = isActive
+        return payload
+    }
+
+    fun updateAnimationState(now: Long) {
+        if (isAnimating) {
+            val elapsed = (now - animationStartTime).coerceAtLeast(0L)
+            if (elapsed >= MARKER_ANIMATION_DURATION) {
+                completeAnimation()
+            }
+        }
+        if (selectionAnimStart != 0L) {
+            val elapsed = (now - selectionAnimStart).coerceAtLeast(0L)
+            if (elapsed >= MARKER_SELECTION_DURATION) {
+                selectionAnimStart = 0L
+                selectionAnimFrom = selectionAnimTo
+            }
+        }
+    }
+
+    fun strokeWidth(): Float = if (isActive) ACTIVE_BORDER_WIDTH else DEFAULT_BORDER_WIDTH
+
+    fun animationStartTimestamp(): Long =
+        when {
+            isAnimating -> animationStartTime
+            selectionAnimStart != 0L -> selectionAnimStart
+            else -> 0L
+        }
+
+    fun animationDuration(): Long =
+        when {
+            isAnimating -> MARKER_ANIMATION_DURATION
+            selectionAnimStart != 0L -> MARKER_SELECTION_DURATION
+            else -> 0L
+        }
+
+    fun debugDirtyReason(): KeyframeReason = dirtyReason
+
+    private fun startRadius(): Float =
+        if (selectionAnimStart != 0L) selectionAnimFrom else if (isActive) ACTIVE_MARKER_RADIUS else INACTIVE_MARKER_RADIUS
+
+    private fun endRadius(): Float =
+        if (selectionAnimStart != 0L) selectionAnimTo else if (isActive) ACTIVE_MARKER_RADIUS else INACTIVE_MARKER_RADIUS
 }
 
 private data class CameraSnapshot(
@@ -939,15 +1376,17 @@ private const val ANIMATION_DURATION = 800L
 private const val TILE_SIZE = 256.0
 private const val MAX_LATITUDE = 85.05112878
 private const val DEFAULT_MARKER_RADIUS = 34f
+private const val INACTIVE_MARKER_RADIUS = 28f
 private const val ACTIVE_MARKER_RADIUS = 44f
 private const val DEFAULT_BORDER_WIDTH = 2f
 private const val ACTIVE_BORDER_WIDTH = 3f
+private const val USER_PLACE_ID = Int.MIN_VALUE
 private const val MARKER_HIT_PADDING = 12f
-private const val MARKER_ANIMATION_DURATION = 500L
-private const val MARKER_SELECTION_DURATION = 160L
+private const val MARKER_ANIMATION_DURATION = 650L
+private const val MARKER_SELECTION_DURATION = 280L
 private const val FRAME_PREDICTION_MS = 24L
 private val MARKER_INTERPOLATOR = OvershootInterpolator()
-
+private const val SUSPICIOUS_RADIUS_THRESHOLD = DEFAULT_MARKER_RADIUS * 0.35f
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 private val shapeCatalog = listOf(
     MaterialShapes.Circle,
@@ -957,7 +1396,6 @@ private val shapeCatalog = listOf(
     MaterialShapes.Oval,
     MaterialShapes.Pill,
     MaterialShapes.Triangle,
-    MaterialShapes.Arrow,
     MaterialShapes.Diamond,
     MaterialShapes.ClamShell,
     MaterialShapes.Pentagon,
@@ -973,3 +1411,19 @@ private val shapeCatalog = listOf(
     MaterialShapes.Ghostish,
     MaterialShapes.Bun
 )
+
+private fun MarkerShapeState.hasValidLocation(): Boolean =
+    place.lat != null && place.lon != null
+
+private fun createUserPlace(location: GeoPoint?): Place =
+    Place(
+        id = USER_PLACE_ID,
+        title = "You",
+        description = "",
+        address = "",
+        lat = location?.latitude,
+        lon = location?.longitude,
+        url = "",
+        date = "",
+        images = emptyList(),
+    )
