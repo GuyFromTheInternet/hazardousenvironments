@@ -13,4 +13,6 @@ internal object NativeHazardShapes {
     external fun createLayerHost(): Long
 
     external fun updateLayer(hostPtr: Long, buffer: ByteBuffer, length: Int)
+
+    external fun registerShapes(buffer: ByteBuffer, length: Int)
 }

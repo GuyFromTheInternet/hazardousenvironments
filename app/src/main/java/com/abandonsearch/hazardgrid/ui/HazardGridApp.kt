@@ -44,24 +44,31 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.rounded.MyLocation
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Sort
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.DockedSearchBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.surfaceColorAtElevation
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.SearchBarDefaults
 import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
@@ -91,6 +98,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -104,8 +112,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.abandonsearch.hazardgrid.data.settings.MapApp
 import com.abandonsearch.hazardgrid.data.settings.SettingsRepository
 import com.abandonsearch.hazardgrid.data.PlacesRepository
+import com.abandonsearch.hazardgrid.domain.FilterState
 import com.abandonsearch.hazardgrid.domain.GeoPoint
+import com.abandonsearch.hazardgrid.domain.SortOption
 import com.abandonsearch.hazardgrid.ui.components.ErrorOverlay
+import com.abandonsearch.hazardgrid.ui.components.FilterChipsRow
+import com.abandonsearch.hazardgrid.ui.components.FilterDialogHost
+import com.abandonsearch.hazardgrid.ui.components.FilterDialogType
 import com.abandonsearch.hazardgrid.ui.components.FilterPanel
 import com.abandonsearch.hazardgrid.ui.components.LoadingOverlay
 import com.abandonsearch.hazardgrid.ui.components.PlaceDetailCard
@@ -207,15 +220,8 @@ fun HazardGridApp() {
         }
     }
 
-    // Track sheet state
-    val isSheetExpanded by remember {
-        derivedStateOf {
-            sheetState.currentValue == SheetValue.Expanded
-        }
-    }
-
-    val sheetElevation = 14.dp
-    val sheetBackgroundColor = MaterialTheme.colorScheme.surfaceColorAtElevation(sheetElevation)
+    val sheetElevation = 20.dp
+    val sheetBackgroundColor = MaterialTheme.colorScheme.surfaceColorAtElevation(32.dp)
 
     val context = LocalContext.current
     val locationPermissions = remember {
@@ -265,12 +271,16 @@ fun HazardGridApp() {
             sheetTonalElevation = sheetElevation,
             sheetSwipeEnabled = true,
             sheetContent = {
-                BoxWithConstraints(modifier = Modifier.fillMaxHeight(0.75f)) {
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.82f)
+                ) {
                     HazardPeninsulaSheet(
                         uiState = uiState,
                         isCompact = isCompact,
-                        isExpanded = isSheetExpanded,
                         mapApp = appSettings.defaultMapApp,
+                        modifier = Modifier.fillMaxSize(),
                         onSearchChange = viewModel::updateQuery,
                         onFloorsChange = viewModel::updateFloors,
                         onSecurityChange = viewModel::updateSecurity,
@@ -281,15 +291,6 @@ fun HazardGridApp() {
                         onClearFilters = viewModel::clearFilters,
                         onResultSelected = { placeId ->
                             viewModel.setActivePlace(placeId, centerOnMap = true)
-                        },
-                        onToggleExpand = {
-                            coroutineScope.launch {
-                                if (isSheetExpanded) {
-                                    sheetState.partialExpand()
-                                } else {
-                                    sheetState.expand()
-                                }
-                            }
                         },
                         onOpenIntel = { webViewUrl = it },
                         onClose = {
@@ -380,7 +381,7 @@ fun HazardGridApp() {
                     modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.Close,
+                        imageVector = Icons.Filled.Close,
                         contentDescription = "Close web view",
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -475,8 +476,8 @@ private fun hazardSettingsViewModel(): SettingsViewModel {
 private fun HazardPeninsulaSheet(
     uiState: HazardUiState,
     isCompact: Boolean,
-    isExpanded: Boolean,
     mapApp: MapApp,
+    modifier: Modifier = Modifier,
     onSearchChange: (String) -> Unit,
     onFloorsChange: (com.abandonsearch.hazardgrid.domain.FloorsFilter) -> Unit,
     onSecurityChange: (com.abandonsearch.hazardgrid.domain.ScaleFilter) -> Unit,
@@ -486,113 +487,84 @@ private fun HazardPeninsulaSheet(
     onSortChange: (com.abandonsearch.hazardgrid.domain.SortOption) -> Unit,
     onClearFilters: () -> Unit,
     onResultSelected: (Int) -> Unit,
-    onToggleExpand: () -> Unit,
     onOpenIntel: (String) -> Unit,
     onClose: () -> Unit,
 ) {
+    val filterListState = rememberLazyListState()
+    var activeDialog by remember { mutableStateOf<FilterDialogType?>(null) }
+    val filterState = uiState.filterState
+    val activeFilters = filterState.countActiveFilters()
+
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
+        modifier = modifier
+            .fillMaxSize()
             .navigationBarsPadding()
             .padding(horizontal = 24.dp, vertical = 20.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
+        verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
-        if (uiState.activePlace != null) {
-            HazardSheetHeader(
-                uiState = uiState,
-                isExpanded = isExpanded,
-                onClearFilters = onClearFilters,
-                onToggleExpand = onToggleExpand
-            )
-            PlaceDetailCard(
-                place = uiState.activePlace,
-                mapApp = mapApp,
-                onClose = onClose,
-                onOpenIntel = onOpenIntel
-            )
-        } else {
-            FilterPanel(
-                uiState = uiState,
-                isCompact = isCompact,
-                onSearchChange = onSearchChange,
-                onFloorsChange = onFloorsChange,
-                onSecurityChange = onSecurityChange,
-                onInteriorChange = onInteriorChange,
-                onAgeChange = onAgeChange,
-                onRatingChange = onRatingChange,
-                onSortChange = onSortChange,
-                onResultSelected = onResultSelected,
-                mapApp = mapApp,
-                modifier = Modifier.fillMaxSize()
-            )
-        }
-    }
-}
-
-@Composable
-private fun HazardSheetHeader(
-    uiState: HazardUiState,
-    isExpanded: Boolean,
-    onClearFilters: () -> Unit,
-    onToggleExpand: () -> Unit,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            tonalElevation = 0.dp
-        ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                HazardPulseIndicator()
-                Icon(
-                    imageVector = Icons.Rounded.WarningAmber,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "Radiation feed",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    val filteredCount = uiState.searchResults.size
-                    val total = uiState.totalValid
-                    val countText = if (total > 0) "$filteredCount / $total" else filteredCount.toString()
-                    Text(
-                        text = "Signals online: $countText",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
+        HazardSheetSearchBar(
+            query = filterState.query,
+            onSearchChange = onSearchChange
+        )
+        HazardSheetQuickActions(
+            currentSort = filterState.sort,
+            activeFilters = activeFilters,
+            filtersEnabled = uiState.activePlace == null,
+            hasFilters = uiState.hasFilters,
+            onSortSelected = onSortChange,
+            onFiltersClick = {
+                if (uiState.activePlace != null) {
+                    onClose()
+                } else {
+                    activeDialog = FilterDialogType.FLOORS
                 }
-            }
-        }
-        Spacer(modifier = Modifier.weight(1f))
-        if (uiState.hasFilters) {
-            TextButton(onClick = onClearFilters) {
-                Text(
-                    text = "Reset filters",
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-        IconButton(onClick = onToggleExpand) {
-            Icon(
-                imageVector = if (isExpanded) Icons.Rounded.ExpandMore else Icons.Rounded.ExpandLess,
-                contentDescription = if (isExpanded) "Collapse sheet" else "Expand sheet",
-                tint = MaterialTheme.colorScheme.primary
+            },
+            onClearFilters = onClearFilters
+        )
+        if (uiState.activePlace == null) {
+            FilterChipsRow(
+                filterState = filterState,
+                modifier = Modifier.fillMaxWidth(),
+                onChipClick = { activeDialog = it }
             )
         }
+        uiState.activePlace?.let { place ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true)
+            ) {
+                PlaceDetailCard(
+                    place = place,
+                    mapApp = mapApp,
+                    onClose = onClose,
+                    onOpenIntel = onOpenIntel,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        } ?: FilterPanel(
+            uiState = uiState,
+            listState = filterListState,
+            onResultSelected = onResultSelected,
+            mapApp = mapApp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f, fill = true)
+        )
+    }
+
+    activeDialog?.let { dialog ->
+        FilterDialogHost(
+            dialogType = dialog,
+            filterState = filterState,
+            onFloorsChange = onFloorsChange,
+            onSecurityChange = onSecurityChange,
+            onInteriorChange = onInteriorChange,
+            onAgeChange = onAgeChange,
+            onRatingChange = onRatingChange,
+            onSortChange = onSortChange,
+            onDismiss = { activeDialog = null }
+        )
     }
 }
 
@@ -606,10 +578,10 @@ private fun HazardSheetHandle() {
     ) {
         Box(
             modifier = Modifier
-                .width(72.dp)
-                .height(8.dp)
+                .width(48.dp)
+                .height(5.dp)
                 .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f))
+                .background(MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f))
         )
     }
 }
@@ -794,34 +766,6 @@ private fun AnimatedActionButton(
 }
 
 @Composable
-private fun HazardPulseIndicator() {
-    val transition = rememberInfiniteTransition(label = "hazard-pulse")
-    val glowAlpha by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.85f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1600),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse-alpha"
-    )
-    Box(
-        modifier = Modifier
-            .size(28.dp)
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.35f)),
-        contentAlignment = Alignment.Center
-    ) {
-        Box(
-            modifier = Modifier
-                .size(14.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha))
-        )
-    }
-}
-
-@Composable
 private fun HazardBackground() {
     val gridColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f)
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
@@ -850,4 +794,126 @@ private fun HazardBackground() {
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HazardSheetSearchBar(
+    query: String,
+    onSearchChange: (String) -> Unit,
+) {
+    var searchText by remember { mutableStateOf(query) }
+
+    LaunchedEffect(query) {
+        if (query != searchText) {
+            searchText = query
+        }
+    }
+
+    DockedSearchBar(
+        modifier = Modifier.fillMaxWidth(),
+        query = searchText,
+        onQueryChange = {
+            searchText = it
+            onSearchChange(it)
+        },
+        onSearch = {},
+        active = false,
+        onActiveChange = {},
+        placeholder = { Text("Search places, intel codes, addresses") },
+        leadingIcon = {
+            Icon(imageVector = Icons.Rounded.Search, contentDescription = "Search")
+        },
+        trailingIcon = {
+            if (searchText.isNotEmpty()) {
+                IconButton(onClick = {
+                    searchText = ""
+                    onSearchChange("")
+                }) {
+                    Icon(imageVector = Icons.Filled.Close, contentDescription = "Clear search")
+                }
+            }
+        },
+        colors = SearchBarDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(28.dp),
+            dividerColor = MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {}
+}
+
+@Composable
+private fun HazardSheetQuickActions(
+    currentSort: SortOption,
+    activeFilters: Int,
+    filtersEnabled: Boolean,
+    hasFilters: Boolean,
+    onSortSelected: (SortOption) -> Unit,
+    onFiltersClick: () -> Unit,
+    onClearFilters: () -> Unit,
+) {
+    var showMenu by remember { mutableStateOf(false) }
+    val sortLabel = "Sort: ${currentSort.displayLabel()}"
+    val filtersLabel = if (activeFilters > 0) {
+        "Filters ($activeFilters)"
+    } else {
+        "All filters"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            FilledTonalButton(
+                onClick = { showMenu = true },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(imageVector = Icons.Rounded.Sort, contentDescription = sortLabel)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(sortLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                SortOption.values().forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(option.displayLabel()) },
+                        onClick = {
+                            showMenu = false
+                            onSortSelected(option)
+                        }
+                    )
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = onFiltersClick,
+            enabled = filtersEnabled,
+            modifier = Modifier.weight(1f)
+        ) {
+            Icon(imageVector = Icons.Rounded.Tune, contentDescription = filtersLabel)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(filtersLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        TextButton(onClick = onClearFilters, enabled = hasFilters) {
+            Text("Clear", fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+private fun FilterState.countActiveFilters(): Int {
+    var count = 0
+    if (floors != com.abandonsearch.hazardgrid.domain.FloorsFilter.ANY) count++
+    if (security != com.abandonsearch.hazardgrid.domain.ScaleFilter.ANY) count++
+    if (interior != com.abandonsearch.hazardgrid.domain.ScaleFilter.ANY) count++
+    if (age != com.abandonsearch.hazardgrid.domain.AgeFilter.ANY) count++
+    if (rating != com.abandonsearch.hazardgrid.domain.RatingFilter.ANY) count++
+    if (sort != SortOption.RELEVANCE) count++
+    if (query.isNotBlank()) count++
+    return count
+}
+
+private fun SortOption.displayLabel(): String = when (this) {
+    SortOption.RELEVANCE -> "Relevance"
+    SortOption.DISTANCE -> "Distance"
+    SortOption.RATING -> "Rating"
+    SortOption.SECURITY -> "Security"
 }

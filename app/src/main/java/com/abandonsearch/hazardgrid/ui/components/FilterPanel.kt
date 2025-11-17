@@ -15,43 +15,62 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SplitButtonDefaults
+import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.abandonsearch.hazardgrid.core.decodeBase64Image
 import com.abandonsearch.hazardgrid.data.Place
 import com.abandonsearch.hazardgrid.data.settings.MapApp
-import com.abandonsearch.hazardgrid.domain.AgeFilter
+import com.abandonsearch.hazardgrid.domain.FilterState
 import com.abandonsearch.hazardgrid.domain.FloorsFilter
 import com.abandonsearch.hazardgrid.domain.RatingFilter
 import com.abandonsearch.hazardgrid.domain.ScaleFilter
@@ -59,28 +78,27 @@ import com.abandonsearch.hazardgrid.domain.SortOption
 import com.abandonsearch.hazardgrid.ui.state.HazardUiState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlin.collections.buildList
 
-private const val HEADER_ITEM_COUNT = 3
+private const val HEADER_ITEM_COUNT = 2
 
-@OptIn(ExperimentalMaterial3Api::class)
+enum class FilterDialogType {
+    FLOORS,
+    SECURITY,
+    INTERIOR,
+    AGE,
+    RATING,
+    SORT
+}
+
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FilterPanel(
     uiState: HazardUiState,
-    isCompact: Boolean,
-    onSearchChange: (String) -> Unit,
-    onFloorsChange: (FloorsFilter) -> Unit,
-    onSecurityChange: (ScaleFilter) -> Unit,
-    onInteriorChange: (ScaleFilter) -> Unit,
-    onAgeChange: (AgeFilter) -> Unit,
-    onRatingChange: (RatingFilter) -> Unit,
-    onSortChange: (SortOption) -> Unit,
+    listState: LazyListState,
     onResultSelected: (Int) -> Unit,
     mapApp: MapApp,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
-
     LaunchedEffect(uiState.activePlaceId) {
         val activeId = uiState.activePlaceId ?: return@LaunchedEffect
         val index = uiState.searchResults.indexOfFirst { it.id == activeId }
@@ -90,31 +108,12 @@ fun FilterPanel(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (uiState.activePlace == null) {
-            HazardSearchSection(
-                query = uiState.filterState.query,
-                onSearchChange = onSearchChange
-            )
-        }
         LazyColumn(
             state = listState,
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier.padding(horizontal = 8.dp)
         ) {
-            item {
-                Spacer(modifier = Modifier.height(20.dp))
-            }
-            item {
-                HazardFilterSection(
-                    isCompact = isCompact,
-                    onFloorsChange = onFloorsChange,
-                    onSecurityChange = onSecurityChange,
-                    onInteriorChange = onInteriorChange,
-                    onAgeChange = onAgeChange,
-                    onRatingChange = onRatingChange,
-                    onSortChange = onSortChange,
-                    uiState = uiState
-                )
-            }
+            item { Spacer(modifier = Modifier.height(16.dp)) }
             item {
                 HazardSectionTitle(
                     label = "Intel feed",
@@ -126,7 +125,7 @@ fun FilterPanel(
                 item {
                     Text(
                         text = if (uiState.filterState.query.isBlank() && !uiState.hasFilters) {
-                            "Incoming signals… stand by."
+                            "Incoming signals... stand by."
                         } else {
                             "No signal matches the current filters."
                         },
@@ -151,191 +150,242 @@ fun FilterPanel(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HazardSearchSection(
-    query: String,
-    onSearchChange: (String) -> Unit,
+fun FilterChipsRow(
+    filterState: FilterState,
+    modifier: Modifier = Modifier,
+    onChipClick: (FilterDialogType) -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = "Search the grid",
-            color = MaterialTheme.colorScheme.primary,
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.SemiBold
-        )
-        OutlinedTextField(
-            value = query,
-            onValueChange = onSearchChange,
-            placeholder = { Text("Search by title, intel, address") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(
-                capitalization = KeyboardCapitalization.Sentences,
-                imeAction = ImeAction.Search
-            ),
-            modifier = Modifier.fillMaxWidth()
-        )
-        HazardDivider()
+    Row(
+        modifier = modifier
+            .horizontalScroll(rememberScrollState())
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        FilterChipDisplay.create(filterState).forEach { chip ->
+            AssistChip(
+                onClick = { onChipClick(chip.type) },
+                modifier = Modifier.heightIn(min = 48.dp),
+                label = {
+                    Text(
+                        text = "${chip.label}: ${chip.value}",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Rounded.Tune,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                colors = AssistChipDefaults.assistChipColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(10.dp),
+                    labelColor = MaterialTheme.colorScheme.onSurface,
+                    leadingIconContentColor = MaterialTheme.colorScheme.primary
+                )
+            )
+        }
     }
 }
 
 @Composable
-private fun HazardFilterSection(
-    isCompact: Boolean,
+fun FilterDialogHost(
+    dialogType: FilterDialogType,
+    filterState: FilterState,
     onFloorsChange: (FloorsFilter) -> Unit,
     onSecurityChange: (ScaleFilter) -> Unit,
     onInteriorChange: (ScaleFilter) -> Unit,
-    onAgeChange: (AgeFilter) -> Unit,
+    onAgeChange: (com.abandonsearch.hazardgrid.domain.AgeFilter) -> Unit,
     onRatingChange: (RatingFilter) -> Unit,
     onSortChange: (SortOption) -> Unit,
-    uiState: HazardUiState,
+    onDismiss: () -> Unit,
 ) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Filter anomalies",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium
+    when (dialogType) {
+        FilterDialogType.FLOORS -> FilterSelectionDialog(
+            title = "Floors",
+            selected = filterState.floors,
+            options = floorOptions,
+            onOptionSelected = {
+                onFloorsChange(it)
+                onDismiss()
+            },
+            onDismiss = onDismiss
         )
-        val filterState = uiState.filterState
-        val activeFilters = remember(filterState) {
-            buildList {
-                if (filterState.floors != FloorsFilter.ANY) {
-                    labelFor(filterState.floors, floorOptions)?.let { add("Floors • $it") }
-                }
-                if (filterState.security != ScaleFilter.ANY) {
-                    labelFor(filterState.security, scaleOptions)?.let { add("Security • $it") }
-                }
-                if (filterState.interior != ScaleFilter.ANY) {
-                    labelFor(filterState.interior, scaleOptions)?.let { add("Interior • $it") }
-                }
-                if (filterState.age != AgeFilter.ANY) {
-                    labelFor(filterState.age, ageOptions)?.let { add("Age • $it") }
-                }
-                if (filterState.rating != RatingFilter.ANY) {
-                    labelFor(filterState.rating, ratingOptions)?.let { add("Rating • $it") }
-                }
-                if (filterState.sort != SortOption.RELEVANCE) {
-                    labelFor(filterState.sort, sortOptions)?.let { add("Sort • $it") }
-                }
-            }
-        }
-        if (activeFilters.isNotEmpty()) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+        FilterDialogType.SECURITY -> FilterSelectionDialog(
+            title = "Security",
+            selected = filterState.security,
+            options = scaleOptions,
+            onOptionSelected = {
+                onSecurityChange(it)
+                onDismiss()
+            },
+            onDismiss = onDismiss
+        )
+        FilterDialogType.INTERIOR -> FilterSelectionDialog(
+            title = "Interior",
+            selected = filterState.interior,
+            options = scaleOptions,
+            onOptionSelected = {
+                onInteriorChange(it)
+                onDismiss()
+            },
+            onDismiss = onDismiss
+        )
+        FilterDialogType.AGE -> FilterSelectionDialog(
+            title = "Building age",
+            selected = filterState.age,
+            options = ageOptions,
+            onOptionSelected = {
+                onAgeChange(it)
+                onDismiss()
+            },
+            onDismiss = onDismiss
+        )
+        FilterDialogType.RATING -> FilterSelectionDialog(
+            title = "Rating",
+            selected = filterState.rating,
+            options = ratingOptions,
+            onOptionSelected = {
+                onRatingChange(it)
+                onDismiss()
+            },
+            onDismiss = onDismiss
+        )
+        FilterDialogType.SORT -> FilterSelectionDialog(
+            title = "Sort order",
+            selected = filterState.sort,
+            options = sortOptions,
+            onOptionSelected = {
+                onSortChange(it)
+                onDismiss()
+            },
+            onDismiss = onDismiss
+        )
+    }
+}
+
+@Composable
+private fun <T> FilterSelectionDialog(
+    title: String,
+    selected: T,
+    options: List<FilterOption<T>>,
+    onOptionSelected: (T) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 32.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(topStart = 40.dp, topEnd = 40.dp, bottomStart = 28.dp, bottomEnd = 28.dp),
+                tonalElevation = 10.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
+                    .widthIn(max = 560.dp)
             ) {
-                activeFilters.forEach { label ->
-                    HazardFilterChip(text = label)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 28.dp, vertical = 24.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Tune,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = title,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                text = "Refine the intel feed instantly.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(scrollState),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        options.forEach { option ->
+                            val isSelected = option.value == selected
+                            val shape = RoundedCornerShape(22.dp)
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(shape)
+                                    .clickable { onOptionSelected(option.value) },
+                                color = if (isSelected) {
+                                    MaterialTheme.colorScheme.secondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp)
+                                },
+                                tonalElevation = if (isSelected) 6.dp else 0.dp,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isSelected) {
+                                        MaterialTheme.colorScheme.secondary
+                                    } else {
+                                        MaterialTheme.colorScheme.outlineVariant
+                                    }
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .padding(horizontal = 18.dp, vertical = 14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = option.label,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
+                                        Text(
+                                            text = if (isSelected) "Applied" else "Tap to apply",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    RadioButton(
+                                        selected = isSelected,
+                                        onClick = { onOptionSelected(option.value) }
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-            }
-        }
-        if (isCompact) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                FilterDropdown(
-                    label = "Floors",
-                    options = floorOptions,
-                    selected = uiState.filterState.floors,
-                    onOptionSelected = onFloorsChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                FilterDropdown(
-                    label = "Security",
-                    options = scaleOptions,
-                    selected = uiState.filterState.security,
-                    onOptionSelected = onSecurityChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                FilterDropdown(
-                    label = "Interior",
-                    options = scaleOptions,
-                    selected = uiState.filterState.interior,
-                    onOptionSelected = onInteriorChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                FilterDropdown(
-                    label = "Building age",
-                    options = ageOptions,
-                    selected = uiState.filterState.age,
-                    onOptionSelected = onAgeChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                FilterDropdown(
-                    label = "Rating",
-                    options = ratingOptions,
-                    selected = uiState.filterState.rating,
-                    onOptionSelected = onRatingChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                FilterDropdown(
-                    label = "Sort",
-                    options = sortOptions,
-                    selected = uiState.filterState.sort,
-                    onOptionSelected = onSortChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        } else {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                FilterDropdown(
-                    label = "Floors",
-                    options = floorOptions,
-                    selected = uiState.filterState.floors,
-                    onOptionSelected = onFloorsChange,
-                    modifier = Modifier.weight(1f)
-                )
-                FilterDropdown(
-                    label = "Security",
-                    options = scaleOptions,
-                    selected = uiState.filterState.security,
-                    onOptionSelected = onSecurityChange,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                FilterDropdown(
-                    label = "Interior",
-                    options = scaleOptions,
-                    selected = uiState.filterState.interior,
-                    onOptionSelected = onInteriorChange,
-                    modifier = Modifier.weight(1f)
-                )
-                FilterDropdown(
-                    label = "Building age",
-                    options = ageOptions,
-                    selected = uiState.filterState.age,
-                    onOptionSelected = onAgeChange,
-                    modifier = Modifier.weight(1f)
-                )
-            }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                FilterDropdown(
-                    label = "Rating",
-                    options = ratingOptions,
-                    selected = uiState.filterState.rating,
-                    onOptionSelected = onRatingChange,
-                    modifier = Modifier.weight(1f)
-                )
-                FilterDropdown(
-                    label = "Sort",
-                    options = sortOptions,
-                    selected = uiState.filterState.sort,
-                    onOptionSelected = onSortChange,
-                    modifier = Modifier.weight(1f)
-                )
             }
         }
     }
@@ -347,53 +397,24 @@ private fun HazardSectionTitle(
     resultCount: Int,
     totalCount: Int,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(
             text = label,
             color = MaterialTheme.colorScheme.onSurface,
-            style = MaterialTheme.typography.titleSmall,
+            style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold
         )
         val totalText = if (totalCount > 0) "$resultCount / $totalCount" else resultCount.toString()
         Text(
             text = "Active signals: $totalText",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall
-        )
-        HazardDivider()
-    }
-}
-
-@Composable
-private fun HazardFilterChip(text: String) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-    ) {
-        Text(
-            text = text,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium
         )
     }
 }
 
-private fun <T> labelFor(value: T, options: List<FilterOption<T>>): String? =
-    options.firstOrNull { it.value == value }?.label
-
-@Composable
-private fun HazardDivider() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .background(MaterialTheme.colorScheme.outline)
-    )
-}
-
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ResultCard(
     place: Place,
@@ -402,28 +423,37 @@ private fun ResultCard(
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val imageState by produceState<ImageBitmap?>(initialValue = null, place.images) {
         value = withContext(Dispatchers.Default) {
             place.images.firstOrNull()?.let { decodeBase64Image(it) }
         }
     }
 
+    val cardShape = RoundedCornerShape(24.dp)
+    val cardColor = if (isActive) {
+        MaterialTheme.colorScheme.surfaceColorAtElevation(18.dp)
+    } else {
+        Color.Transparent
+    }
+    val borderStroke = if (isActive) {
+        BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+    } else {
+        null
+    }
     Surface(
-        shape = RoundedCornerShape(22.dp),
-        tonalElevation = if (isActive) 18.dp else 6.dp,
-        shadowElevation = if (isActive) 24.dp else 10.dp,
-        border = BorderStroke(
-            1.dp,
-            if (isActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outline
-        ),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = if (isActive) 0.98f else 0.94f),
+        shape = cardShape,
+        tonalElevation = if (isActive) 18.dp else 0.dp,
+        shadowElevation = 0.dp,
+        border = borderStroke,
+        color = cardColor,
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .padding(horizontal = 4.dp, vertical = 8.dp)
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -465,21 +495,50 @@ private fun ResultCard(
                         .clip(RoundedCornerShape(16.dp))
                 )
             }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                val mapsUrl = buildMapsUrl(place, mapApp)
-                if (mapsUrl != null) {
-                    TextButton(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl))
-                            context.startActivity(intent)
+            val coords = formatCoordinates(place)
+            val mapsUrl = buildMapsUrl(place, mapApp)
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = coords ?: "No coordinates",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (mapsUrl != null || coords != null) {
+                    SplitButtonLayout(
+                        leadingButton = {
+                            SplitButtonDefaults.LeadingButton(
+                                onClick = {
+                                    coords?.let { clipboard.setText(AnnotatedString(it)) }
+                                },
+                                enabled = coords != null
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ContentCopy,
+                                    contentDescription = "Copy coordinates",
+                                    modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize)
+                                )
+                                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                                Text("Coordinates", fontWeight = FontWeight.SemiBold)
+                            }
                         },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("Open maps", fontWeight = FontWeight.SemiBold)
-                    }
+                        trailingButton = {
+                            SplitButtonDefaults.TrailingButton(
+                                onClick = {
+                                    mapsUrl?.let {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                                        context.startActivity(intent)
+                                    }
+                                },
+                                enabled = mapsUrl != null
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Map,
+                                    contentDescription = "Open maps",
+                                    modifier = Modifier.size(SplitButtonDefaults.TrailingIconSize)
+                                )
+                            }
+                        }
+                    )
                 }
                 if (place.url.isNotBlank()) {
                     TextButton(
@@ -497,11 +556,37 @@ private fun ResultCard(
     }
 }
 
+private fun formatCoordinates(place: Place): String? {
+    val lat = place.lat ?: return null
+    val lon = place.lon ?: return null
+    return "${"%.5f".format(lat)}, ${"%.5f".format(lon)}"
+}
+
+private data class FilterChipDisplay(
+    val type: FilterDialogType,
+    val label: String,
+    val value: String,
+) {
+    companion object {
+        fun create(state: FilterState): List<FilterChipDisplay> = listOf(
+            FilterChipDisplay(FilterDialogType.FLOORS, "Floors", labelFor(state.floors, floorOptions)),
+            FilterChipDisplay(FilterDialogType.SECURITY, "Security", labelFor(state.security, scaleOptions)),
+            FilterChipDisplay(FilterDialogType.INTERIOR, "Interior", labelFor(state.interior, scaleOptions)),
+            FilterChipDisplay(FilterDialogType.AGE, "Age", labelFor(state.age, ageOptions)),
+            FilterChipDisplay(FilterDialogType.RATING, "Rating", labelFor(state.rating, ratingOptions)),
+            FilterChipDisplay(FilterDialogType.SORT, "Sort", labelFor(state.sort, sortOptions))
+        )
+    }
+}
+
+private fun <T> labelFor(value: T, options: List<FilterOption<T>>): String =
+    options.firstOrNull { it.value == value }?.label ?: "Any"
+
 private val floorOptions = listOf(
     FilterOption(FloorsFilter.ANY, "Any floors"),
-    FilterOption(FloorsFilter.LOW, "1 – 5 floors"),
-    FilterOption(FloorsFilter.MID, "6 – 7 floors"),
-    FilterOption(FloorsFilter.HIGH, "8 – 12 floors"),
+    FilterOption(FloorsFilter.LOW, "1 - 5 floors"),
+    FilterOption(FloorsFilter.MID, "6 - 7 floors"),
+    FilterOption(FloorsFilter.HIGH, "8 - 12 floors"),
     FilterOption(FloorsFilter.TOWER, "13+ floors"),
     FilterOption(FloorsFilter.UNKNOWN, "Unknown floors")
 )
@@ -515,22 +600,24 @@ private val scaleOptions = listOf(
 )
 
 private val ageOptions = listOf(
-    FilterOption(AgeFilter.ANY, "Any"),
-    FilterOption(AgeFilter.NEW, "0 – 2"),
-    FilterOption(AgeFilter.RECENT, "3 – 4"),
-    FilterOption(AgeFilter.CLASSIC, "5 – 7"),
-    FilterOption(AgeFilter.HERITAGE, "8+"),
-    FilterOption(AgeFilter.UNKNOWN, "Unknown")
+    FilterOption(com.abandonsearch.hazardgrid.domain.AgeFilter.ANY, "Any"),
+    FilterOption(com.abandonsearch.hazardgrid.domain.AgeFilter.NEW, "0 - 2"),
+    FilterOption(com.abandonsearch.hazardgrid.domain.AgeFilter.RECENT, "3 - 4"),
+    FilterOption(com.abandonsearch.hazardgrid.domain.AgeFilter.CLASSIC, "5 - 7"),
+    FilterOption(com.abandonsearch.hazardgrid.domain.AgeFilter.HERITAGE, "8+"),
+    FilterOption(com.abandonsearch.hazardgrid.domain.AgeFilter.UNKNOWN, "Unknown")
 )
 
 private val ratingOptions = listOf(
     FilterOption(RatingFilter.ANY, "Any rating"),
-    FilterOption(RatingFilter.FOUR_PLUS, "Rating ≥ 4"),
-    FilterOption(RatingFilter.SIX_PLUS, "Rating ≥ 6"),
-    FilterOption(RatingFilter.EIGHT_PLUS, "Rating ≥ 8"),
-    FilterOption(RatingFilter.NINE_PLUS, "Rating ≥ 9"),
+    FilterOption(RatingFilter.FOUR_PLUS, "Rating >= 4"),
+    FilterOption(RatingFilter.SIX_PLUS, "Rating >= 6"),
+    FilterOption(RatingFilter.EIGHT_PLUS, "Rating >= 8"),
+    FilterOption(RatingFilter.NINE_PLUS, "Rating >= 9"),
     FilterOption(RatingFilter.UNKNOWN, "No rating")
 )
+
+
 
 private val sortOptions = listOf(
     FilterOption(SortOption.RELEVANCE, "Relevance"),

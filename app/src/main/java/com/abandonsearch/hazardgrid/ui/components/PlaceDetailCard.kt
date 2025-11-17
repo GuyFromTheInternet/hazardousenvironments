@@ -1,5 +1,7 @@
 package com.abandonsearch.hazardgrid.ui.components
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,36 +10,39 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Map
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SplitButtonDefaults
+import androidx.compose.material3.SplitButtonLayout
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import android.content.Intent
-import android.net.Uri
-import androidx.compose.foundation.text.selection.SelectionContainer
-import com.abandonsearch.hazardgrid.R
 import com.abandonsearch.hazardgrid.data.Place
 import com.abandonsearch.hazardgrid.data.settings.MapApp
-import com.abandonsearch.hazardgrid.ui.theme.AccentPrimary
-import com.abandonsearch.hazardgrid.ui.theme.NightOverlay
-import com.abandonsearch.hazardgrid.ui.theme.SurfaceBorder
-import com.abandonsearch.hazardgrid.ui.theme.TextMuted
-import com.abandonsearch.hazardgrid.ui.theme.TextPrimary
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun PlaceDetailCard(
     place: Place,
@@ -50,12 +55,14 @@ fun PlaceDetailCard(
     val context = LocalContext.current
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = MaterialTheme.colorScheme.surfaceColorAtElevation(18.dp),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 20.dp),
+            modifier = Modifier
+                .padding(horizontal = 24.dp, vertical = 20.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Box {
@@ -90,7 +97,7 @@ fun PlaceDetailCard(
                     modifier = Modifier.align(Alignment.TopEnd)
                 ) {
                     Icon(
-                        painter = painterResource(id = R.drawable.hazard_close),
+                        imageVector = Icons.Filled.Close,
                         contentDescription = "Close detail",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -100,42 +107,53 @@ fun PlaceDetailCard(
             PlaceMetrics(place)
 
             val coords = formatCoordinates(place)
-            if (coords != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = coords,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+            val mapsUrl = buildMapsUrl(place, mapApp)
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = coords ?: "No coordinates",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (mapsUrl != null || coords != null) {
+                    SplitButtonLayout(
+                        leadingButton = {
+                            SplitButtonDefaults.LeadingButton(
+                                onClick = {
+                                    coords?.let { clipboard.setText(AnnotatedString(it)) }
+                                },
+                                enabled = coords != null
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.ContentCopy,
+                                    contentDescription = "Copy coordinates",
+                                    modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize)
+                                )
+                                Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                                Text("Coordinates", fontWeight = FontWeight.SemiBold)
+                            }
+                        },
+                        trailingButton = {
+                            SplitButtonDefaults.TrailingButton(
+                                onClick = {
+                                    mapsUrl?.let {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(it))
+                                        context.startActivity(intent)
+                                    }
+                                },
+                                enabled = mapsUrl != null
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Map,
+                                    contentDescription = "Open maps",
+                                    modifier = Modifier.size(SplitButtonDefaults.TrailingIconSize)
+                                )
+                            }
+                        }
                     )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TextButton(
-                        onClick = {
-                            clipboard.setText(AnnotatedString(coords))
-                        },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("Copy")
-                    }
                 }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val mapsUrl = buildMapsUrl(place, mapApp)
-                if (mapsUrl != null) {
+                if (place.url.isNotBlank()) {
                     TextButton(
-                        onClick = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(mapsUrl))
-                            context.startActivity(intent)
-                        },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
-                    ) {
-                        Text("Open maps", fontWeight = FontWeight.SemiBold)
-                    }
-                }
-                val url = place.url
-                if (url.isNotBlank()) {
-                    TextButton(
-                        onClick = { onOpenIntel(url) },
+                        onClick = { onOpenIntel(place.url) },
                         colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.primary)
                     ) {
                         Text("Open intel")
